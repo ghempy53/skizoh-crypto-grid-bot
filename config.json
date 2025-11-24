@@ -1,0 +1,23 @@
+{
+  "api_key": "YOUR_BINANCE_API_KEY",
+  "api_secret": "YOUR_BINANCE_API_SECRET",
+  "symbol": "ETH/USDT",
+  
+  "_comment_grid": "Grid trading settings",
+  "grid_levels": 10,
+  "grid_spacing_percent": 0.5,
+  "leverage": 3,
+  
+  "_comment_risk": "Risk management - CRITICAL SAFETY SETTINGS",
+  "max_position_percent": 5,
+  "stop_loss_percent": 15,
+  "max_total_exposure": 60,
+  
+  "_comment_volatility": "Volatility filter settings",
+  "atr_period": 14,
+  "atr_multiplier": 2,
+  "volatility_threshold": 3.5,
+  
+  "_comment_operation": "Bot operation settings",
+  "check_interval_seconds": 30
+}
