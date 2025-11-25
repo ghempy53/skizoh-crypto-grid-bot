@@ -23,3 +23,6 @@ config.json
 
 # Ignore private key data
 priv_data.txt
+
+# Ignore testing file
+test_bot.py
