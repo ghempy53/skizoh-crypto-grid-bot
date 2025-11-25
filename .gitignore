@@ -22,4 +22,4 @@ venv/
 config.json
 
 # Ignore private key data
-binance_keys.txt
+priv_data.txt
