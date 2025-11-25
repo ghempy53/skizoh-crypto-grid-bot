@@ -42,8 +42,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-BOT_DIR="$HOME/crypto_bot"
-LOG_FILE="$BOT_DIR/grid_bot.log"
+BOT_DIR="$HOME/skizoh-crypto-grid-bot"
+LOG_FILE="$BOT_DIR/logs/grid_bot.log"
 
 clear
 echo -e "${BLUE}========================================${NC}"
