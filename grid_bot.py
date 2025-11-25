@@ -42,6 +42,8 @@ import json
 import logging
 from datetime import datetime
 import numpy as np
+import csv
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -61,6 +63,8 @@ class SpotGridTradingBot:
         self.grid_levels = []
         self.active_orders = {}
         self.initial_investment = 0
+        self.tax_log_file = 'tax_transactions.csv'
+        self.initialize_tax_log()
         
     def load_config(self, config_file):
         """Load configuration from JSON file"""
@@ -109,6 +113,77 @@ class SpotGridTradingBot:
         except Exception as e:
             logging.error(f"Failed to initialize exchange: {e}")
             raise
+    
+    def initialize_tax_log(self):
+        """Initialize CSV file for tax record keeping"""
+        try:
+            # Check if file exists
+            file_exists = os.path.isfile(self.tax_log_file)
+            
+            if not file_exists:
+                # Create new file with headers
+                with open(self.tax_log_file, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        'Date/Time',
+                        'Transaction Type',
+                        'Asset',
+                        'Amount',
+                        'Price (USD)',
+                        'Total Value (USD)',
+                        'Fee (USD)',
+                        'Net Proceeds (USD)',
+                        'Order ID',
+                        'Notes'
+                    ])
+                logging.info(f"Created tax log file: {self.tax_log_file}")
+            else:
+                logging.info(f"Using existing tax log file: {self.tax_log_file}")
+        except Exception as e:
+            logging.error(f"Failed to initialize tax log: {e}")
+    
+    def log_tax_transaction(self, transaction_type, asset, amount, price, fee, order_id, notes=''):
+        """
+        Log a transaction for tax purposes
+        
+        transaction_type: 'BUY' or 'SELL'
+        asset: e.g., 'ETH'
+        amount: quantity of asset
+        price: price per unit in USD
+        fee: trading fee in USD
+        order_id: exchange order ID
+        notes: optional additional info
+        """
+        try:
+            total_value = amount * price
+            
+            # For sells, net proceeds = total - fee
+            # For buys, cost basis = total + fee
+            if transaction_type == 'SELL':
+                net_proceeds = total_value - fee
+            else:
+                net_proceeds = total_value + fee
+            
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            with open(self.tax_log_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    timestamp,
+                    transaction_type,
+                    asset,
+                    f"{amount:.8f}",
+                    f"{price:.2f}",
+                    f"{total_value:.2f}",
+                    f"{fee:.2f}",
+                    f"{net_proceeds:.2f}",
+                    order_id,
+                    notes
+                ])
+            
+            logging.info(f"💰 Tax log: {transaction_type} {amount:.6f} {asset} @ ${price:.2f}")
+        except Exception as e:
+            logging.error(f"Failed to log tax transaction: {e}")
     
     def get_balances(self):
         """Get USDT and crypto balances"""
@@ -314,7 +389,34 @@ class SpotGridTradingBot:
                         amount = order_info['filled']
                         price = order_info['price']
                         
+                        # Calculate fee
+                        fee = 0
+                        if 'fee' in order_info and order_info['fee']:
+                            fee_info = order_info['fee']
+                            # Fee might be in different currency, convert to USD
+                            if fee_info['currency'] == 'USDT':
+                                fee = float(fee_info['cost'])
+                            else:
+                                # If fee is in the asset (e.g., ETH), convert to USD
+                                fee = float(fee_info['cost']) * price
+                        
+                        # If no fee info, estimate (Binance.US is 0.1%)
+                        if fee == 0:
+                            fee = (amount * price) * 0.001  # 0.1%
+                        
                         logging.info(f"✓ Order FILLED: {side.upper()} {amount} at ${price}")
+                        
+                        # Log for tax purposes
+                        base_currency = self.symbol.split('/')[0]
+                        self.log_tax_transaction(
+                            transaction_type=side.upper(),
+                            asset=base_currency,
+                            amount=amount,
+                            price=price,
+                            fee=fee,
+                            order_id=order_id,
+                            notes='Grid bot automated trade'
+                        )
                         
                         # Remove from active orders
                         del self.active_orders[order_id]
@@ -454,12 +556,27 @@ class SpotGridTradingBot:
                 quantity = self.exchange.amount_to_precision(self.symbol, balances['base'])
                 
                 if float(quantity) > 0:
-                    self.exchange.create_order(
+                    order = self.exchange.create_order(
                         symbol=self.symbol,
                         type='market',
                         side='sell',
                         amount=quantity
                     )
+                    
+                    # Log emergency sell for taxes
+                    current_price = self.exchange.fetch_ticker(self.symbol)['last']
+                    fee = float(quantity) * current_price * 0.001
+                    
+                    self.log_tax_transaction(
+                        transaction_type='SELL',
+                        asset=balances['base_currency'],
+                        amount=float(quantity),
+                        price=current_price,
+                        fee=fee,
+                        order_id=order['id'],
+                        notes='Emergency stop loss exit'
+                    )
+                    
                     logging.critical(f"Emergency sold {quantity} {balances['base_currency']}")
             
             logging.critical("All positions closed, bot stopped")
