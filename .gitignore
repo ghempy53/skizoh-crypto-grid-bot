@@ -25,4 +25,4 @@ config.json
 priv_data.txt
 
 # Ignore testing file
-# test_bot.py
+test_api_keys.py
