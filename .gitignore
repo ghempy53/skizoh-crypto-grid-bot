@@ -26,3 +26,9 @@ priv_data.txt
 
 # Ignore testing file
 test_api_keys.py
+
+# Ignore tax transactions file
+tax_transactions.csv
+
+# Ignore log file
+grid_bot.log
