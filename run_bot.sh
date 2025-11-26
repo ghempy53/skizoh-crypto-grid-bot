@@ -1,38 +1,8 @@
 #!/bin/bash
 
-#  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  ÆÆÆÆÆÆÆÆ   #  #  #  #  #  #  #  #  #  #  #  #                            
-#                                                          ÆÆÆÆÆÆÆÆÆÆÆÆÆ                                #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ    ÆÆÆÆÆÆ  ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ          ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆ ÆÆÆÆÆ        ÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆÆ    ÆÆÆÆÆ  ÆÆÆÆÆÆ    ÆÆÆÆÆ          ÆÆÆÆÆÆ ÆÆÆÆÆ           ÆÆÆÆÆÆÆÆÆ  ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆ     ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ         ÆÆÆÆÆÆ  ÆÆÆÆÆ     ÆÆ  ÆÆ    ÆÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     Æ       ÆÆÆÆÆ ÆÆÆÆÆ      ÆÆÆÆÆ         ÆÆÆÆÆ   ÆÆÆÆÆ     ÆÆ  ÆÆÆ    ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆ           ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ        ÆÆÆÆÆÆ   ÆÆÆÆÆ     ÆÆÆ ÆÆÆ     ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#  ÆÆÆÆÆÆÆ          ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ       ÆÆÆÆÆÆ    ÆÆÆÆÆ     ÆÆÆ ÆÆÆ  Æ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#    ÆÆÆÆÆÆÆ        ÆÆÆÆÆÆÆÆÆ        ÆÆÆÆÆ       ÆÆÆÆÆÆ    ÆÆÆÆÆ ÆÆÆÆ        ÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#      ÆÆÆÆÆÆÆ      ÆÆÆÆÆÆÆÆÆ        ÆÆÆÆÆ      ÆÆÆÆÆÆ     ÆÆÆÆÆ  ÆÆÆ       ÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#       ÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ      ÆÆÆÆÆ      ÆÆÆÆÆ   ÆÆÆ     ÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#         ÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆÆ     ÆÆÆÆÆÆ       ÆÆÆÆÆ   ÆÆÆÆÆÆÆ ÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#    ÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ    ÆÆÆÆÆÆ        ÆÆÆÆÆ        ÆÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#  ÆÆÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ  ÆÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆ          ÆÆÆÆÆ        ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆ          ÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆ  ÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆ   ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆÆ  ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ     ÆÆÆÆÆÆ ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  ÆÆÆÆÆÆÆÆ ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#                                                                     ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ                  #
-#                                                                       ÆÆÆ  ÆÆÆÆÆÆÆ                    #    
-#                                                                        ÆÆÆÆ   ÆÆÆ                     #
-#                                                                         ÆÆÆÆÆÆÆÆ                      #
-#                                                                          ÆÆÆÆÆÆ                       #
-#  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
-
 ##############################################################################
-# Crypto Grid Trading Bot - Startup Script
-# This script handles all the setup needed to run the bot safely
+# Skizoh Crypto Grid Trading Bot - Startup Script
+# This script handles all the setup needed to run your bot safely
 ##############################################################################
 
 # Color codes for pretty output
@@ -44,10 +14,13 @@ NC='\033[0m' # No Color
 
 # Configuration
 BOT_DIR="$HOME/skizoh-crypto-grid-bot"
+SRC_DIR="$BOT_DIR/src"
+PRIV_DIR="$SRC_DIR/priv"
+DATA_DIR="$BOT_DIR/data"
 VENV_DIR="$BOT_DIR/venv"
-BOT_SCRIPT="$BOT_DIR/src/grid_bot.py"
-CONFIG_FILE="$BOT_DIR/config.json"
-LOG_FILE="$BOT_DIR/grid_bot.log"
+MAIN_SCRIPT="$SRC_DIR/main.py"
+CONFIG_FILE="$PRIV_DIR/config.json"
+LOG_FILE="$DATA_DIR/grid_bot.log"
 
 ##############################################################################
 # Functions
@@ -55,7 +28,7 @@ LOG_FILE="$BOT_DIR/grid_bot.log"
 
 print_header() {
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}   SKIZOH CRYPTO GRID BOT STARTUP${NC}"
+    echo -e "${BLUE}   SKIZOH CRYPTO GRID BOT v13${NC}"
     echo -e "${BLUE}========================================${NC}"
     echo ""
 }
@@ -85,6 +58,30 @@ check_directory() {
     fi
     cd "$BOT_DIR" || exit 1
     print_success "Changed to bot directory: $BOT_DIR"
+}
+
+# Check directory structure
+check_structure() {
+    if [ ! -d "$SRC_DIR" ]; then
+        print_error "Source directory not found: $SRC_DIR"
+        echo "Please create it with: mkdir -p $SRC_DIR"
+        exit 1
+    fi
+    print_success "Source directory found"
+    
+    if [ ! -d "$PRIV_DIR" ]; then
+        print_error "Private config directory not found: $PRIV_DIR"
+        echo "Please create it with: mkdir -p $PRIV_DIR"
+        exit 1
+    fi
+    print_success "Private config directory found"
+    
+    if [ ! -d "$DATA_DIR" ]; then
+        print_error "Data directory not found: $DATA_DIR"
+        echo "Please create it with: mkdir -p $DATA_DIR"
+        exit 1
+    fi
+    print_success "Data directory found"
 }
 
 # Check if virtual environment exists
@@ -134,11 +131,11 @@ check_dependencies() {
 
 # Check if bot script exists
 check_bot_files() {
-    if [ ! -f "$BOT_SCRIPT" ]; then
-        print_error "Bot script not found: $BOT_SCRIPT"
+    if [ ! -f "$MAIN_SCRIPT" ]; then
+        print_error "Main script not found: $MAIN_SCRIPT"
         exit 1
     fi
-    print_success "Bot script found"
+    print_success "Main script found"
     
     if [ ! -f "$CONFIG_FILE" ]; then
         print_error "Config file not found: $CONFIG_FILE"
@@ -156,7 +153,7 @@ check_permissions() {
         print_info "Fixing permissions..."
         chmod 600 "$CONFIG_FILE"
         print_success "Permissions fixed to 600"
-    else
+    else:
         print_success "Config file permissions are secure (600)"
     fi
 }
@@ -167,7 +164,7 @@ check_internet() {
     
     if ping -c 1 8.8.8.8 &> /dev/null; then
         print_success "Internet connection OK"
-    else
+    else:
         print_error "No internet connection detected"
         echo "The bot requires internet to connect to Binance.US"
         exit 1
@@ -176,11 +173,11 @@ check_internet() {
 
 # Check if another instance is running
 check_running_instance() {
-    if pgrep -f "python3.*grid_bot.py" > /dev/null; then
+    if pgrep -f "python3.*main.py" > /dev/null; then
         print_warning "Bot may already be running!"
         echo ""
         echo "Running bot processes:"
-        ps aux | grep "python3.*grid_bot.py" | grep -v grep
+        ps aux | grep "python3.*main.py" | grep -v grep
         echo ""
         read -p "Do you want to continue anyway? (y/N): " -n 1 -r
         echo ""
@@ -241,6 +238,7 @@ preflight_checklist() {
     echo ""
     
     check_directory
+    check_structure
     check_virtualenv
     activate_venv
     check_dependencies
@@ -258,7 +256,7 @@ preflight_checklist() {
 # Start the bot
 start_bot() {
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}  STARTING SKIZOH CRYPTO GRID BOT...${NC}"
+    echo -e "${GREEN}   STARTING SMART GRID BOT v13...${NC}"
     echo -e "${GREEN}========================================${NC}"
     echo ""
     
@@ -269,14 +267,15 @@ start_bot() {
     echo ""
     
     # Run the bot
-    python3 "$BOT_SCRIPT"
+    cd "$SRC_DIR" || exit 1
+    python3 main.py
     
     # This only runs if bot exits
     EXIT_CODE=$?
     echo ""
     if [ $EXIT_CODE -eq 0 ]; then
         print_success "Bot exited cleanly"
-    else
+    else:
         print_error "Bot exited with error code: $EXIT_CODE"
         print_info "Check the log file for details: $LOG_FILE"
     fi
@@ -306,9 +305,10 @@ preflight_checklist
 # Final confirmation
 echo -e "${YELLOW}Ready to start bot. Confirm your settings:${NC}"
 echo "  • Using Binance.US API"
-echo "  • Trading on spot market (no leverage)"
-echo "  • Stop loss: 20%"
-echo "  • Volatility filter: Active"
+echo "  • Smart Grid Trading v13"
+echo "  • RSI/MACD Analysis Enabled"
+echo "  • Dynamic Grid Repositioning"
+echo "  • Profit Compounding Active"
 echo ""
 read -p "Start the bot now? (y/N): " -n 1 -r
 echo ""
