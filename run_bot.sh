@@ -47,7 +47,7 @@ BOT_DIR="$HOME/skizoh-crypto-grid-bot"
 VENV_DIR="$BOT_DIR/venv"
 BOT_SCRIPT="$BOT_DIR/src/grid_bot.py"
 CONFIG_FILE="$BOT_DIR/config.json"
-LOG_FILE="$BOT_DIR/logs/grid_bot.log"
+LOG_FILE="$BOT_DIR/grid_bot.log"
 
 ##############################################################################
 # Functions
