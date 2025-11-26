@@ -29,18 +29,23 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # \file: tax_summary.py
-# \Author: Garrett Hempy
-# \Date: 11-24-2025
-# \Description: Creates tax summary .csv file for IRS Form 8949
+# \Date: 11-26-2025
+# \Description: Tax summary generator for crypto grid trading bot
+#               Generates reports for US tax filing (IRS Form 8949)
 
-
-###________________________IMPORTS________________________###
 import csv
 from datetime import datetime
 from collections import defaultdict
 
-def load_transactions(filename='tax_transactions.csv'):
-    """Load all transactions from CSV"""
+def load_transactions(filename='../data/tax_transactions.csv'):
+    """Load all transactions from CSV.
+    
+    Args:
+        filename (str): Path to tax transactions CSV file
+    
+    Returns:
+        list: List of transaction dictionaries
+    """
     transactions = []
     
     try:
@@ -54,9 +59,13 @@ def load_transactions(filename='tax_transactions.csv'):
         return []
 
 def calculate_capital_gains(transactions):
-    """
-    Calculate capital gains using FIFO (First In First Out) method
-    Required for US tax reporting
+    """Calculate capital gains using FIFO (First In First Out) method.
+    
+    Args:
+        transactions (list): List of transaction dictionaries
+    
+    Returns:
+        tuple: (sales list, total gain, total proceeds, total cost basis)
     """
     # Track purchases (cost basis) for each asset
     purchase_queue = defaultdict(list)  # asset -> [(amount, price, date, fee)]
@@ -126,7 +135,14 @@ def calculate_capital_gains(transactions):
     return sales, total_gain, total_proceeds, total_cost_basis
 
 def generate_summary_report(transactions):
-    """Generate a comprehensive tax summary"""
+    """Generate a comprehensive tax summary.
+    
+    Args:
+        transactions (list): List of transaction dictionaries
+    
+    Returns:
+        None
+    """
     if not transactions:
         print("No transactions to summarize.")
         return
@@ -180,7 +196,7 @@ def generate_summary_report(transactions):
     print("1. Report on IRS Form 8949 (Sales and Dispositions of Capital Assets)")
     print("2. Transfer totals to Schedule D (Capital Gains and Losses)")
     print("3. This bot uses FIFO (First In First Out) accounting method")
-    print("4. Keep 'tax_transactions.csv' for your records (7 years)")
+    print("4. Keep tax_transactions.csv for your records (7 years)")
     print("5. Consult a tax professional for personalized advice")
     print("\n6. Short-term vs Long-term:")
     print("   - Held < 1 year = Short-term (taxed as ordinary income)")
@@ -189,7 +205,15 @@ def generate_summary_report(transactions):
     print("="*70 + "\n")
 
 def export_form_8949_csv(transactions, year=None):
-    """Export data in format ready for Form 8949"""
+    """Export data in format ready for Form 8949.
+    
+    Args:
+        transactions (list): List of transaction dictionaries
+        year (int): Tax year (defaults to current year)
+    
+    Returns:
+        None
+    """
     if year is None:
         year = datetime.now().year
     
@@ -199,7 +223,7 @@ def export_form_8949_csv(transactions, year=None):
         print("No sales to export.")
         return
     
-    filename = f'form_8949_data_{year}.csv'
+    filename = f'../data/form_8949_data_{year}.csv'
     
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -217,7 +241,7 @@ def export_form_8949_csv(transactions, year=None):
         for sale in sales:
             writer.writerow([
                 f"{sale['amount']:.6f} {sale['asset']}",
-                'Various (FIFO)',  # Multiple acquisition dates
+                'Various (FIFO)',
                 sale['date'],
                 f"${sale['proceeds']:.2f}",
                 f"${sale['cost_basis']:.2f}",
@@ -228,7 +252,14 @@ def export_form_8949_csv(transactions, year=None):
     print("You can import this into tax software or give to your accountant.\n")
 
 def generate_year_end_report(year=None):
-    """Generate complete year-end tax report"""
+    """Generate complete year-end tax report.
+    
+    Args:
+        year (int): Tax year (defaults to current year)
+    
+    Returns:
+        None
+    """
     if year is None:
         year = datetime.now().year
     
