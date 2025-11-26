@@ -19,7 +19,7 @@ venv/
 .vscode/
 
 # Ignore real config (template stays tracked)
-config.json
+# config.json
 
 # Ignore private key data
 priv_data.txt
