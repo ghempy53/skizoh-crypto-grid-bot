@@ -50,7 +50,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('grid_bot.log'),
+        logging.FileHandler('logs/grid_bot.log'),
         logging.StreamHandler()
     ]
 )
