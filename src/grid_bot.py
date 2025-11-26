@@ -30,12 +30,13 @@
 
 # \file: grid_bot.py
 # \Author: Garrett Hempy
-# \Date: 11-23-2025
+# \Date: 11-26-2025
+# \Version: 10
 # \Description: Spot Grid Trading Bot for Binance.US
 #               No leverage - Safer approach for learning
-
-
-###________________________IMPORTS________________________###
+#               Fixed portfolio calculation to include pending orders
+#
+###______________________________IMPORTS______________________________###
 import ccxt
 import time
 import json
@@ -503,14 +504,28 @@ class SpotGridTradingBot:
             
             current_price = self.exchange.fetch_ticker(self.symbol)['last']
             
-            # Total value = USDT + (crypto * current price)
-            total_value = balances['quote'] + (balances['base'] * current_price)
+            # Get value of open orders (funds locked in pending orders)
+            open_orders_value = 0
+            try:
+                open_orders = self.exchange.fetch_open_orders(self.symbol)
+                for order in open_orders:
+                    if order['side'] == 'buy':
+                        # Buy orders: USDT is locked
+                        open_orders_value += float(order['remaining']) * float(order['price'])
+                    else:
+                        # Sell orders: crypto is locked (convert to USDT value)
+                        open_orders_value += float(order['remaining']) * current_price
+            except Exception as e:
+                logging.warning(f"Could not fetch open orders for portfolio calc: {e}")
+            
+            # Total value = free USDT + (free crypto * price) + locked funds in orders
+            total_value = balances['quote'] + (balances['base'] * current_price) + open_orders_value
             
             if self.initial_investment > 0:
                 profit = total_value - self.initial_investment
                 profit_percent = (profit / self.initial_investment) * 100
                 
-                logging.info(f"Portfolio Value: ${total_value:.2f} | P&L: ${profit:.2f} ({profit_percent:.2f}%)")
+                logging.info(f"Portfolio Value: ${total_value:.2f} (Free: ${balances['quote']:.2f}, Orders: ${open_orders_value:.2f}) | P&L: ${profit:.2f} ({profit_percent:.2f}%)")
                 
                 return {
                     'total_value': total_value,
