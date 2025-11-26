@@ -15,7 +15,7 @@ NC='\033[0m'
 # Configuration
 BOT_DIR="$HOME/skizoh-crypto-grid-bot"
 VENV_DIR="$BOT_DIR/venv"
-TEST_SCRIPT="$BOT_DIR/test_api.py"
+TEST_SCRIPT="$BOT_DIR/src/test_api.py"
 CONFIG_FILE="$BOT_DIR/config.json"
 
 ##############################################################################
