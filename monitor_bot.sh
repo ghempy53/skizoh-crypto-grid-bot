@@ -42,8 +42,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Configuration
 BOT_DIR="$HOME/skizoh-crypto-grid-bot"
-LOG_FILE="$BOT_DIR/grid_bot.log"
+SRC_DIR="$BOT_DIR/src"
+DATA_DIR="$BOT_DIR/data"
+MAIN_SCRIPT="$SRC_DIR/main.py"
+LOG_FILE="$DATA_DIR/grid_bot.log"
 
 clear
 echo -e "${BLUE}========================================${NC}"
@@ -111,7 +115,7 @@ case $REPLY in
         grep -i "error\|failed\|exception" "$LOG_FILE" | tail -n 20
         ;;
     5)
-        cd "$BOT_DIR"
+        cd "$SRC_DIR"
         source venv/bin/activate
         python3 tax_summary.py
         deactivate
