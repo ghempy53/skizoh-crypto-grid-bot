@@ -153,7 +153,7 @@ check_permissions() {
         print_info "Fixing permissions..."
         chmod 600 "$CONFIG_FILE"
         print_success "Permissions fixed to 600"
-    else:
+    else
         print_success "Config file permissions are secure (600)"
     fi
 }
