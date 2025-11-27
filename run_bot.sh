@@ -275,7 +275,7 @@ start_bot() {
     echo ""
     if [ $EXIT_CODE -eq 0 ]; then
         print_success "Bot exited cleanly"
-    else:
+    else
         print_error "Bot exited with error code: $EXIT_CODE"
         print_info "Check the log file for details: $LOG_FILE"
     fi
