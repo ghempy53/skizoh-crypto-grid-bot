@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# Crypto Grid Trading Bot - Testing Script
+# Skizoh Crypto Grid Trading Bot - Testing Script
 # Tests API connection and validates setup
 ##############################################################################
 
@@ -14,9 +14,12 @@ NC='\033[0m'
 
 # Configuration
 BOT_DIR="$HOME/skizoh-crypto-grid-bot"
+SRC_DIR="$BOT_DIR/src"
+PRIV_DIR="$SRC_DIR/priv"
+DATA_DIR="$BOT_DIR/data"
 VENV_DIR="$BOT_DIR/venv"
-TEST_SCRIPT="$BOT_DIR/src/test_api.py"
-CONFIG_FILE="$BOT_DIR/config.json"
+TEST_SCRIPT="$SRC_DIR/test_api.py"
+CONFIG_FILE="$PRIV_DIR/config.json"
 
 ##############################################################################
 # Functions
@@ -134,16 +137,43 @@ check_files() {
         exit 1
     fi
     
-    if [ -f "$BOT_DIR/grid_bot.py" ]; then
+    if [ -f "$SRC_DIR/grid_bot.py" ]; then
         print_success "grid_bot.py found"
     else
         print_warning "grid_bot.py not found (needed to run bot)"
     fi
     
-    if [ -f "$BOT_DIR/tax_summary.py" ]; then
+    if [ -f "$SRC_DIR/tax_summary.py" ]; then
         print_success "tax_summary.py found"
     else
         print_warning "tax_summary.py not found (optional)"
+    fi
+}
+
+# Check directory structure
+check_structure() {
+    echo ""
+    print_info "Checking directory structure..."
+    
+    if [ -d "$SRC_DIR" ]; then
+        print_success "src/ directory found"
+    else
+        print_error "src/ directory not found"
+        exit 1
+    fi
+    
+    if [ -d "$PRIV_DIR" ]; then
+        print_success "src/priv/ directory found"
+    else
+        print_error "src/priv/ directory not found"
+        exit 1
+    fi
+    
+    if [ -d "$DATA_DIR" ]; then
+        print_success "data/ directory found"
+    else
+        print_warning "data/ directory not found"
+        echo "Create it with: mkdir -p $DATA_DIR"
     fi
 }
 
@@ -213,7 +243,8 @@ run_api_test() {
     echo -e "${BLUE}========================================${NC}"
     echo ""
     
-    python3 "$TEST_SCRIPT"
+    cd "$SRC_DIR" || exit 1
+    python3 test_api.py
     
     TEST_EXIT_CODE=$?
     
@@ -300,6 +331,7 @@ if [ $# -eq 0 ]; then
     
     case $REPLY in
         1)
+            check_structure
             test_python
             check_files
             validate_config
@@ -327,6 +359,7 @@ if [ $# -eq 0 ]; then
             show_system_info
             ;;
         6)
+            check_structure
             test_python
             check_files
             validate_config
@@ -350,6 +383,7 @@ else
             run_api_test
             ;;
         --full)
+            check_structure
             test_python
             check_files
             validate_config
