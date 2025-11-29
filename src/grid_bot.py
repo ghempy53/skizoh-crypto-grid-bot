@@ -344,7 +344,7 @@ class SmartGridTradingBot:
             available_usdt = balances['quote'] * (investment_percent / 100)
             
             if self.initial_investment == 0:
-                self.initial_investment = available_usdt + (balances['base'] * current_price)
+                self.initial_investment = balances['quote'] + (balances['base'] * current_price)
             
             # Cancel existing orders if repositioning
             if reposition:
