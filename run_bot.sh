@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Crypto Grid Trading Bot - Startup Script
-# This script handles all the setup needed to run your bot safely
+# Skizoh Crypto Grid Trading Bot v14 - Startup Script
+# Enhanced with v14 feature checks and improved validation
 ##############################################################################
 
 # Color codes for pretty output
@@ -10,312 +10,485 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Configuration
-BOT_DIR="$HOME/skizoh-crypto-grid-bot"
+# Configuration - Updated for v14
+BOT_DIR="$HOME/skizoh-grid-bot-v14"
 SRC_DIR="$BOT_DIR/src"
 PRIV_DIR="$SRC_DIR/priv"
 DATA_DIR="$BOT_DIR/data"
 VENV_DIR="$BOT_DIR/venv"
 MAIN_SCRIPT="$SRC_DIR/main.py"
 CONFIG_FILE="$PRIV_DIR/config.json"
+CONFIG_TEMPLATE="$PRIV_DIR/config.json.template"
 LOG_FILE="$DATA_DIR/grid_bot.log"
+TAX_FILE="$DATA_DIR/tax_transactions.csv"
+
+# v14 version info
+BOT_VERSION="14"
+BOT_NAME="Skizoh Smart Grid Bot"
 
 ##############################################################################
 # Functions
 ##############################################################################
 
 print_header() {
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}   SKIZOH CRYPTO GRID BOT v13${NC}"
-    echo -e "${BLUE}========================================${NC}"
+    echo ""
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC}     ${BOLD}${BLUE}SKIZOH CRYPTO GRID TRADING BOT v${BOT_VERSION}${NC}                       ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}     ${BOLD}Smart Automated Trading with Risk Management${NC}            ${CYAN}║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}✓${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}✗ $1${NC}"
+    echo -e "${RED}✗${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    echo -e "${YELLOW}⚠${NC} $1"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+print_section() {
+    echo ""
+    echo -e "${BOLD}${BLUE}─── $1 ───${NC}"
 }
 
 # Check if running in bot directory
 check_directory() {
     if [ ! -d "$BOT_DIR" ]; then
         print_error "Bot directory not found: $BOT_DIR"
-        echo "Please create it with: mkdir -p $BOT_DIR"
+        echo ""
+        echo "To set up the bot, run:"
+        echo "  mkdir -p $BOT_DIR/{src/priv,data,venv}"
+        echo "  # Then extract v14 files to $BOT_DIR"
         exit 1
     fi
     cd "$BOT_DIR" || exit 1
-    print_success "Changed to bot directory: $BOT_DIR"
+    print_success "Bot directory: $BOT_DIR"
 }
 
 # Check directory structure
 check_structure() {
+    local missing=0
+    
     if [ ! -d "$SRC_DIR" ]; then
-        print_error "Source directory not found: $SRC_DIR"
-        echo "Please create it with: mkdir -p $SRC_DIR"
-        exit 1
+        print_error "Source directory missing: $SRC_DIR"
+        missing=1
     fi
-    print_success "Source directory found"
     
     if [ ! -d "$PRIV_DIR" ]; then
-        print_error "Private config directory not found: $PRIV_DIR"
-        echo "Please create it with: mkdir -p $PRIV_DIR"
-        exit 1
+        print_error "Private config directory missing: $PRIV_DIR"
+        echo "  Create with: mkdir -p $PRIV_DIR"
+        missing=1
     fi
-    print_success "Private config directory found"
     
     if [ ! -d "$DATA_DIR" ]; then
-        print_error "Data directory not found: $DATA_DIR"
-        echo "Please create it with: mkdir -p $DATA_DIR"
+        print_warning "Data directory missing, creating..."
+        mkdir -p "$DATA_DIR"
+        print_success "Created: $DATA_DIR"
+    fi
+    
+    if [ $missing -eq 1 ]; then
         exit 1
     fi
-    print_success "Data directory found"
+    
+    print_success "Directory structure verified"
 }
 
-# Check if virtual environment exists
+# Check virtual environment
 check_virtualenv() {
     if [ ! -d "$VENV_DIR" ]; then
-        print_error "Virtual environment not found: $VENV_DIR"
-        echo "Please create it with: python3 -m venv $VENV_DIR"
-        exit 1
+        print_warning "Virtual environment not found"
+        echo ""
+        read -p "  Create virtual environment now? (y/N): " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Creating virtual environment..."
+            python3 -m venv "$VENV_DIR"
+            if [ $? -eq 0 ]; then
+                print_success "Virtual environment created"
+                # Activate and install dependencies
+                source "$VENV_DIR/bin/activate"
+                print_info "Installing dependencies..."
+                pip install --upgrade pip > /dev/null 2>&1
+                pip install numpy ccxt > /dev/null 2>&1
+                print_success "Dependencies installed (numpy, ccxt)"
+            else
+                print_error "Failed to create virtual environment"
+                exit 1
+            fi
+        else
+            print_error "Virtual environment required"
+            echo "  Create manually: python3 -m venv $VENV_DIR"
+            exit 1
+        fi
+    else
+        print_success "Virtual environment found"
     fi
-    print_success "Virtual environment found"
 }
 
 # Activate virtual environment
 activate_venv() {
-    print_info "Activating virtual environment..."
     source "$VENV_DIR/bin/activate"
     
     if [ -z "$VIRTUAL_ENV" ]; then
         print_error "Failed to activate virtual environment"
         exit 1
     fi
-    print_success "Virtual environment activated: $VIRTUAL_ENV"
+    print_success "Virtual environment activated"
 }
 
-# Check if required Python packages are installed
+# Check Python dependencies
 check_dependencies() {
-    print_info "Checking Python dependencies..."
+    local missing=0
     
     # Check NumPy
-    python3 -c "import numpy" 2>/dev/null
-    if [ $? -ne 0 ]; then
+    if python3 -c "import numpy" 2>/dev/null; then
+        NUMPY_VER=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null)
+        print_success "NumPy $NUMPY_VER"
+    else
         print_error "NumPy not installed"
-        echo "Install with: pip install numpy"
-        exit 1
+        missing=1
     fi
-    print_success "NumPy is installed"
     
     # Check CCXT
-    python3 -c "import ccxt" 2>/dev/null
-    if [ $? -ne 0 ]; then
+    if python3 -c "import ccxt" 2>/dev/null; then
+        CCXT_VER=$(python3 -c "import ccxt; print(ccxt.__version__)" 2>/dev/null)
+        print_success "CCXT $CCXT_VER"
+    else
         print_error "CCXT not installed"
-        echo "Install with: pip install ccxt"
-        exit 1
+        missing=1
     fi
-    print_success "CCXT is installed"
-}
-
-# Check if bot script exists
-check_bot_files() {
-    if [ ! -f "$MAIN_SCRIPT" ]; then
-        print_error "Main script not found: $MAIN_SCRIPT"
-        exit 1
-    fi
-    print_success "Main script found"
     
-    if [ ! -f "$CONFIG_FILE" ]; then
-        print_error "Config file not found: $CONFIG_FILE"
+    if [ $missing -eq 1 ]; then
+        echo ""
+        print_info "Install missing packages with:"
+        echo "  pip install numpy ccxt"
         exit 1
     fi
-    print_success "Config file found"
 }
 
-# Check config file permissions
-check_permissions() {
-    CONFIG_PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE")
+# Check bot files
+check_bot_files() {
+    local missing=0
+    
+    # Required files
+    local required_files=(
+        "$MAIN_SCRIPT:main.py"
+        "$SRC_DIR/grid_bot.py:grid_bot.py"
+        "$SRC_DIR/market_analysis.py:market_analysis.py"
+        "$SRC_DIR/config_manager.py:config_manager.py"
+    )
+    
+    for file_entry in "${required_files[@]}"; do
+        local filepath="${file_entry%%:*}"
+        local filename="${file_entry##*:}"
+        
+        if [ -f "$filepath" ]; then
+            print_success "$filename"
+        else
+            print_error "$filename not found"
+            missing=1
+        fi
+    done
+    
+    # Optional files
+    if [ -f "$SRC_DIR/tax_summary.py" ]; then
+        print_success "tax_summary.py (optional)"
+    fi
+    
+    if [ -f "$SRC_DIR/test_api.py" ]; then
+        print_success "test_api.py (optional)"
+    fi
+    
+    if [ $missing -eq 1 ]; then
+        print_error "Missing required files. Please reinstall v14."
+        exit 1
+    fi
+}
+
+# Check config file
+check_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        if [ -f "$CONFIG_TEMPLATE" ]; then
+            print_warning "Config file not found"
+            echo ""
+            read -p "  Copy from template? (y/N): " -n 1 -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                cp "$CONFIG_TEMPLATE" "$CONFIG_FILE"
+                chmod 600 "$CONFIG_FILE"
+                print_success "Config file created from template"
+                print_warning "You MUST edit $CONFIG_FILE with your API keys!"
+                echo ""
+                read -p "  Edit config now? (Y/n): " -n 1 -r
+                echo ""
+                if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                    ${EDITOR:-nano} "$CONFIG_FILE"
+                fi
+            else
+                print_error "Config file required"
+                exit 1
+            fi
+        else
+            print_error "Neither config.json nor template found!"
+            exit 1
+        fi
+    fi
+    
+    # Validate JSON
+    if ! python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>/dev/null; then
+        print_error "config.json is not valid JSON!"
+        echo "  Check for syntax errors (missing commas, quotes, etc.)"
+        exit 1
+    fi
+    print_success "config.json valid"
+    
+    # Check if API keys are configured
+    API_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('api_key', ''))" 2>/dev/null)
+    
+    if [ "$API_KEY" = "YOUR_BINANCE_US_API_KEY" ] || [ -z "$API_KEY" ]; then
+        print_error "API key not configured!"
+        echo "  Edit: $CONFIG_FILE"
+        exit 1
+    fi
+    print_success "API credentials configured"
+    
+    # Check permissions
+    CONFIG_PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null)
     
     if [ "$CONFIG_PERMS" != "600" ]; then
-        print_warning "Config file permissions are $CONFIG_PERMS (should be 600)"
-        print_info "Fixing permissions..."
+        print_warning "Fixing config permissions ($CONFIG_PERMS → 600)"
         chmod 600 "$CONFIG_FILE"
-        print_success "Permissions fixed to 600"
-    else
-        print_success "Config file permissions are secure (600)"
     fi
+    print_success "Config permissions secure (600)"
 }
 
 # Check internet connectivity
 check_internet() {
-    print_info "Checking internet connectivity..."
-    
-    if ping -c 1 8.8.8.8 &> /dev/null; then
+    if ping -c 1 -W 3 8.8.8.8 &> /dev/null; then
         print_success "Internet connection OK"
     else
-        print_error "No internet connection detected"
-        echo "The bot requires internet to connect to Binance.US"
+        print_error "No internet connection"
         exit 1
+    fi
+    
+    # Test Binance.US connectivity
+    if curl -s --max-time 5 "https://api.binance.us/api/v3/ping" > /dev/null 2>&1; then
+        print_success "Binance.US API reachable"
+    else
+        print_warning "Cannot reach Binance.US API (may be temporary)"
     fi
 }
 
-# Check if another instance is running
+# Check for running instances
 check_running_instance() {
     if pgrep -f "python3.*main.py" > /dev/null; then
         print_warning "Bot may already be running!"
         echo ""
-        echo "Running bot processes:"
-        ps aux | grep "python3.*main.py" | grep -v grep
+        echo "  Running processes:"
+        ps aux | grep "python3.*main.py" | grep -v grep | awk '{print "    PID: "$2" | CPU: "$3"% | MEM: "$4"% | Time: "$10}'
         echo ""
-        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
+        read -p "  Continue anyway? (y/N): " -n 1 -r
         echo ""
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Exiting..."
             exit 0
         fi
     fi
 }
 
-# Display system info
+# Show system info
 show_system_info() {
     echo ""
-    print_info "System Information:"
-    echo "  Hostname: $(hostname)"
-    echo "  Date/Time: $(date)"
-    echo "  Uptime: $(uptime -p)"
+    print_info "System Status:"
+    
+    # Date/Time
+    echo "  Time: $(date '+%Y-%m-%d %H:%M:%S %Z')"
     
     # Memory
-    MEM_TOTAL=$(free -h | awk '/^Mem:/ {print $2}')
-    MEM_USED=$(free -h | awk '/^Mem:/ {print $3}')
-    MEM_FREE=$(free -h | awk '/^Mem:/ {print $4}')
-    echo "  Memory: $MEM_USED used / $MEM_TOTAL total ($MEM_FREE free)"
+    if command -v free &> /dev/null; then
+        MEM_USED=$(free -h | awk '/^Mem:/ {print $3}')
+        MEM_TOTAL=$(free -h | awk '/^Mem:/ {print $2}')
+        echo "  Memory: $MEM_USED / $MEM_TOTAL"
+    fi
     
     # Disk
-    DISK_USAGE=$(df -h "$BOT_DIR" | awk 'NR==2 {print $5}')
-    echo "  Disk Usage: $DISK_USAGE"
-    
-    # CPU Temperature (Raspberry Pi specific)
-    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-        TEMP=$(cat /sys/class/thermal/thermal_zone0/temp)
-        TEMP=$(echo "scale=1; $TEMP/1000" | bc)
-        echo "  CPU Temperature: ${TEMP}°C"
+    DISK_USAGE=$(df -h "$BOT_DIR" 2>/dev/null | awk 'NR==2 {print $5 " used (" $4 " free)"}')
+    if [ -n "$DISK_USAGE" ]; then
+        echo "  Disk: $DISK_USAGE"
     fi
-    echo ""
+    
+    # CPU Temp (Raspberry Pi)
+    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        if [ -n "$TEMP" ]; then
+            TEMP_C=$(echo "scale=1; $TEMP/1000" | bc 2>/dev/null || echo "N/A")
+            echo "  CPU Temp: ${TEMP_C}°C"
+        fi
+    fi
+    
+    # Log file size
+    if [ -f "$LOG_FILE" ]; then
+        LOG_SIZE=$(du -h "$LOG_FILE" 2>/dev/null | cut -f1)
+        echo "  Log size: $LOG_SIZE"
+    fi
 }
 
-# Backup existing log if too large
-backup_log() {
+# Backup and rotate logs
+manage_logs() {
     if [ -f "$LOG_FILE" ]; then
-        LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE")
-        # If log is larger than 10MB (10485760 bytes)
-        if [ "$LOG_SIZE" -gt 10485760 ]; then
-            BACKUP_NAME="$BOT_DIR/grid_bot_$(date +%Y%m%d_%H%M%S).log"
-            print_warning "Log file is large ($(numfmt --to=iec $LOG_SIZE))"
-            print_info "Backing up to: $BACKUP_NAME"
+        LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null)
+        
+        # If log > 10MB, rotate
+        if [ -n "$LOG_SIZE" ] && [ "$LOG_SIZE" -gt 10485760 ]; then
+            BACKUP_NAME="$DATA_DIR/grid_bot_$(date +%Y%m%d_%H%M%S).log"
+            print_warning "Log file large ($(numfmt --to=iec $LOG_SIZE 2>/dev/null || echo "${LOG_SIZE}B"))"
             mv "$LOG_FILE" "$BACKUP_NAME"
-            print_success "Log backed up and reset"
+            gzip "$BACKUP_NAME" 2>/dev/null
+            print_success "Log rotated: ${BACKUP_NAME}.gz"
         fi
     fi
 }
 
-# Display pre-flight checklist
+# Show v14 features
+show_v14_features() {
+    echo ""
+    echo -e "${BOLD}v14 Features Active:${NC}"
+    echo "  • FIFO Position Tracking (accurate P&L)"
+    echo "  • ADX Trend Filter (pauses in strong trends)"
+    echo "  • Fee-Aware Grid Spacing"
+    echo "  • Position Exposure Limits"
+    echo "  • Wilder's RSI (industry standard)"
+    echo "  • Enhanced Drawdown Protection"
+}
+
+# Pre-flight checklist
 preflight_checklist() {
-    echo ""
     print_header
-    echo -e "${YELLOW}PRE-FLIGHT CHECKLIST:${NC}"
-    echo ""
     
+    print_section "Directory & Environment"
     check_directory
     check_structure
     check_virtualenv
     activate_venv
+    
+    print_section "Dependencies"
     check_dependencies
+    
+    print_section "Bot Files"
     check_bot_files
-    check_permissions
+    
+    print_section "Configuration"
+    check_config
+    
+    print_section "Connectivity"
     check_internet
     check_running_instance
-    backup_log
+    
+    print_section "System"
+    manage_logs
     show_system_info
     
-    print_success "All pre-flight checks passed!"
+    show_v14_features
+    
     echo ""
+    print_success "All pre-flight checks passed!"
 }
 
 # Start the bot
 start_bot() {
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}   STARTING SMART GRID BOT v13...${NC}"
-    echo -e "${GREEN}========================================${NC}"
+    echo ""
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC}              ${BOLD}STARTING GRID BOT v${BOT_VERSION}...${NC}                         ${GREEN}║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
-    print_info "Bot is now running. Press Ctrl+C to stop."
-    print_info "Logs are being written to: $LOG_FILE"
+    print_info "Bot is starting. Press Ctrl+C to stop."
+    print_info "Log file: $LOG_FILE"
     echo ""
-    echo -e "${YELLOW}TIP: Open another terminal and run 'tail -f $LOG_FILE' to watch live logs${NC}"
+    echo -e "${YELLOW}TIP: Monitor in another terminal:${NC}"
+    echo "  tail -f $LOG_FILE"
     echo ""
     
     # Run the bot
     cd "$SRC_DIR" || exit 1
     python3 main.py
     
-    # This only runs if bot exits
     EXIT_CODE=$?
     echo ""
+    
     if [ $EXIT_CODE -eq 0 ]; then
         print_success "Bot exited cleanly"
     else
         print_error "Bot exited with error code: $EXIT_CODE"
-        print_info "Check the log file for details: $LOG_FILE"
+        print_info "Check log: $LOG_FILE"
     fi
     
-    # Deactivate virtual environment
     deactivate 2>/dev/null
 }
 
-# Handle cleanup on exit
+# Cleanup handler
 cleanup() {
     echo ""
     print_info "Cleaning up..."
     deactivate 2>/dev/null
-    print_success "Goodbye!"
 }
 
 ##############################################################################
 # Main Script
 ##############################################################################
 
-# Set up trap to handle cleanup on exit
 trap cleanup EXIT
 
-# Run pre-flight checks
-preflight_checklist
-
-# Final confirmation
-echo -e "${YELLOW}Ready to start bot. Confirm your settings:${NC}"
-echo "  • Using Binance.US API"
-echo "  • Smart Grid Trading v13"
-echo "  • RSI/MACD Analysis Enabled"
-echo "  • Dynamic Grid Repositioning"
-echo "  • Profit Compounding Active"
-echo ""
-read -p "Start the bot now? (y/N): " -n 1 -r
-echo ""
-
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    start_bot
-else
-    print_info "Start cancelled by user"
-    exit 0
-fi
+# Parse arguments
+case "${1:-}" in
+    --skip-checks)
+        print_header
+        check_directory
+        check_virtualenv
+        activate_venv
+        start_bot
+        ;;
+    --help|-h)
+        echo "Usage: $0 [OPTIONS]"
+        echo ""
+        echo "Options:"
+        echo "  --skip-checks  Skip pre-flight checks (faster startup)"
+        echo "  --help, -h     Show this help message"
+        echo ""
+        echo "Default: Run full pre-flight checks before starting"
+        exit 0
+        ;;
+    *)
+        # Run full checks
+        preflight_checklist
+        
+        echo ""
+        echo -e "${BOLD}Ready to start. Confirm settings:${NC}"
+        echo "  • Binance.US API"
+        echo "  • Smart Grid Trading v14"
+        echo "  • ADX Trend Filter: Active"
+        echo "  • FIFO P&L Tracking: Active"
+        echo "  • Position Limits: Active"
+        echo ""
+        read -p "Start the bot now? (Y/n): " -n 1 -r
+        echo ""
+        
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            start_bot
+        else
+            print_info "Cancelled by user"
+        fi
+        ;;
+esac
