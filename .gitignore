@@ -19,9 +19,8 @@ venv/
 .vscode/
 *.code-workspace
 
-
-# Ignore real config (template stays tracked)
-# config.json
+# Ignore priv directory
+src/priv/
 
 # Ignore private key data
 priv_data.txt
