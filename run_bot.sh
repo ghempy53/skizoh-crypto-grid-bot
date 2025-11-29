@@ -164,7 +164,7 @@ check_internet() {
     
     if ping -c 1 8.8.8.8 &> /dev/null; then
         print_success "Internet connection OK"
-    else:
+    else
         print_error "No internet connection detected"
         echo "The bot requires internet to connect to Binance.US"
         exit 1
