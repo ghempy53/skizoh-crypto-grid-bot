@@ -1,86 +1,84 @@
-# Skizoh Crypto Grid Trading Bot - Setup Guide
+# Skizoh Crypto Grid Trading Bot
+
+### New Features
+
+- **ADX Trend Filter**: Automatically pauses grid trading when ADX > 35 (strong trend)
+- **Bollinger Band Analysis**: Volatility assessment and price position tracking
+- **Volume-Weighted S/R**: Support/resistance levels now weighted by volume and recency
+- **Max Drawdown Tracking**: Real-time drawdown monitoring with emergency stops
+- **Enhanced Tax Logging**: Pre-calculated cost basis and realized P&L per trade
+- **Trading Safety Check**: Comprehensive pre-trade market condition analysis
+
+---
 
 ## 📁 File Structure
 
 ```
-skizoh-crypto-grid-bot/
-├── run_bot.sh               # Entry point - run this!
-├── venv/                    # Python virtual environment
+skizoh-grid-bot-v14/
+├── run_bot.sh                    # Entry point
+├── README.md                     # This file
+├── venv/                         # Python virtual environment
 ├── src/
-│   ├── main.py
-│   ├── grid_bot.py          # Smart trading bot
-│   ├── market_analysis.py   # RSI, MACD, S/R detection
-│   ├── config_manager.py    # Multi-scenario config
-│   ├── tax_summary.py       # Tax reporting
-│   ├── test_api.py          # API testing
+│   ├── main.py                   # Bot entry point
+│   ├── grid_bot.py               # Core trading engine
+│   ├── market_analysis.py        # Technical indicators
+│   ├── config_manager.py         # Configuration handling
+│   ├── tax_summary.py            # Tax report generator
+│   ├── test_api.py               # API connection test
 │   └── priv/
-│       └── config.json      # ⚠️ SENSITIVE - Your API keys
+│       ├── config.json           # Your config (sensitive!)
+│       └── config.json.template  # Template
 └── data/
-    ├── grid_bot.log         # Runtime logs
-    └── tax_transactions.csv # Tax records
+    ├── grid_bot.log              # Runtime logs
+    ├── tax_transactions.csv      # Tax records
+    └── form_8949_data_*.csv      # IRS-ready exports
 ```
 
-## 🚀 Quick Setup
+---
 
-### Step 1: Create Directory Structure
+## 🔧 Quick Setup
+
+### 1. Create Directory & Virtual Environment
 
 ```bash
 cd ~
-mkdir -p skizoh-crypto-grid-bot/src/priv
-cd skizoh-crypto-grid-bot
-```
+mkdir -p skizoh-grid-bot-v14/src/priv
+mkdir -p skizoh-grid-bot-v14/data
+cd skizoh-grid-bot-v14
 
-### Step 2: Create Virtual Environment
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install numpy ccxt
 ```
 
-### Step 3: Copy Files
+### 2. Copy Files
 
-Copy all files to their correct locations:
+Copy all v14 files to their locations.
 
-**Root directory:**
-- `run_bot.sh` → `~/skizoh-crypto-grid-bot/`
-
-**src/ directory:**
-- `main.py` → `~/skizoh-crypto-grid-bot/src/`
-- `grid_bot.py` → `~/skizoh-crypto-grid-bot/src/`
-- `market_analysis.py` → `~/skizoh-crypto-grid-bot/src/`
-- `config_manager.py` → `~/skizoh-crypto-grid-bot/src/`
-- `tax_summary.py` → `~/skizoh-crypto-grid-bot/src/`
-- `test_api.py` → `~/skizoh-crypto-grid-bot/src/`
-
-**priv/ directory (sensitive):**
-- `config.json` → `~/skizoh-crypto-grid-bot/src/priv/`
-
-### Step 4: Set Permissions
+### 3. Configure API Keys
 
 ```bash
-chmod +x run_bot.sh
-chmod 600 src/priv/config.json  # Secure your API keys!
-```
-
-### Step 5: Configure API Keys
-
-Edit `src/priv/config.json` and add your Binance.US API keys:
-
-```bash
+cp src/priv/config.json.template src/priv/config.json
 nano src/priv/config.json
 ```
 
-Update:
+Update with your Binance.US API keys:
 ```json
 {
-  "api_key": "YOUR_ACTUAL_API_KEY_HERE",
-  "api_secret": "YOUR_ACTUAL_SECRET_KEY_HERE",
-  ...
+    "api_key": "YOUR_ACTUAL_KEY",
+    "api_secret": "YOUR_ACTUAL_SECRET",
+    ...
 }
 ```
 
-### Step 6: Test Connection
+### 4. Set Permissions
+
+```bash
+chmod +x run_bot.sh
+chmod 600 src/priv/config.json
+```
+
+### 5. Test Connection
 
 ```bash
 cd src
@@ -88,251 +86,243 @@ source ../venv/bin/activate
 python3 test_api.py
 ```
 
-You should see:
-```
-✅ API Connection Successful!
-Your Balances:
-  USDT: 240.69
-  ETH: 0.000000
-```
-
-### Step 7: Run the Bot!
+### 6. Run the Bot
 
 ```bash
-cd ~/skizoh-crypto-grid-bot
+cd ~/skizoh-grid-bot-v14
 ./run_bot.sh
 ```
-
----
-
-## 🔧 Common Commands
-
-### Start Bot
-```bash
-./run_bot.sh
-```
-
-### Stop Bot
-Press `Ctrl+C` in the terminal running the bot
-
-### View Live Logs
-```bash
-tail -f grid_bot.log
-```
-
-### Generate Tax Report
-```bash
-cd src
-source ../venv/bin/activate
-python3 tax_summary.py
-```
-
-### Test API Connection
-```bash
-cd src
-source ../venv/bin/activate
-python3 test_api.py
-```
-
----
-
-## 📊 Features
-
-### 1. Dynamic Grid Repositioning
-- Automatically adjusts grid when price moves too far
-- Prevents all orders from being out of range
-- Cancels old orders and creates new ones
-
-### 2. RSI Indicator
-- **< 30**: Oversold (good time to buy)
-- **> 70**: Overbought (good time to sell)
-- **40-60**: Neutral zone
-- Bot adjusts grid bias based on RSI
-
-### 3. MACD Indicator
-- Confirms trend direction
-- Positive histogram = bullish momentum
-- Negative histogram = bearish momentum
-- Works with RSI for better decisions
-
-### 4. Support/Resistance Detection
-- Finds key price levels from history
-- Places orders near these levels
-- Higher probability of fills
-- Better entry/exit points
-
-### 5. Profit Compounding
-- Automatically increases position size as you profit
-- +5% profit → Use 85% of balance
-- +10% profit → Use 90% of balance
-- +20% profit → Use 95% of balance
 
 ---
 
 ## ⚙️ Configuration
 
-### Scenario Selection
+### Key Parameters
 
-When you start the bot, you'll see 8 scenarios:
+| Parameter | Description | Recommended |
+|-----------|-------------|-------------|
+| `fee_rate` | Exchange fee rate | 0.001 (0.1%) |
+| `max_position_percent` | Max % of portfolio in crypto | 75% |
+| `max_single_order_percent` | Max single order size | 12% |
+| `grid_spacing_percent` | Space between grid levels | ≥0.5% (see below) |
 
-1. **Conservative** (Risk: ★☆☆☆☆) - Safest, learning mode
-2. **Balanced** (Risk: ★★★☆☆) - Normal trading
-3. **Aggressive** (Risk: ★★★★☆) - High activity
-4. **Low Volatility** (Risk: ★★★☆☆) - Calm markets
-5. **High Volatility** (Risk: ★★☆☆☆) - Extreme swings
-6. **Scalping** (Risk: ★★★★★) - Maximum trades
-7. **Swing Trading** (Risk: ★★★☆☆) - Big moves
-8. **Night Mode** (Risk: ★★☆☆☆) - Safer overnight
+### Minimum Profitable Grid Spacing
 
-### Market Analysis
-
-Bot shows you:
-- Current price and 24h range
-- RSI value (oversold/overbought)
-- MACD histogram (momentum)
-- Market trend assessment
-- Nearest support/resistance levels
-- **Recommended scenario** for current conditions
-
-### Example Output
+With 0.1% fees each way (0.2% round trip), your spacing must exceed this to profit:
 
 ```
-MARKET ANALYSIS & RECOMMENDATION
-======================================================================
-
-Current ETH/USDT Price: $3,036.68
-24h Range: $3,015.00 - $3,055.50 (1.34%)
-24h Volume: 125,432.50 ETH
-
-📊 RSI (14): 45.23
-   → NEUTRAL
-📈 MACD Histogram: -0.0234
-   → BEARISH - Downward momentum
-
-🎯 Market Trend: NEUTRAL (MODERATE)
-
-🛡️  Nearest Support: $3,010.50
-⚡ Nearest Resistance: $3,065.00
-
-======================================================================
-💡 RECOMMENDED SCENARIO: [3] Low Volatility
-   Calm markets with tight spreads
-
-Select scenario [0-7] or 'q' to quit:
+Minimum = (2 × fee_rate × 100) × safety_factor
+        = (2 × 0.001 × 100) × 2.5
+        = 0.5%
 ```
+
+**The bot will automatically adjust spacing if it's too tight.**
+
+### Scenarios
+
+| # | Name | Risk | Spacing | Best For |
+|---|------|------|---------|----------|
+| 0 | Conservative | ★☆☆☆☆ | 1.2% | Learning, uncertain markets |
+| 1 | Balanced | ★★★☆☆ | 0.8% | Normal conditions |
+| 2 | Aggressive | ★★★★☆ | 0.6% | Active monitoring |
+| 3 | Low Volatility | ★★★☆☆ | 0.5% | Calm, ranging markets |
+| 4 | High Volatility | ★★☆☆☆ | 1.5% | Volatile markets |
+| 5 | Scalping | ★★★★★ | 0.5% | Max frequency (high fees!) |
+| 6 | Swing Trading | ★★★☆☆ | 2.5% | Multi-day positions |
+| 7 | Night Mode | ★★☆☆☆ | 1.0% | Overnight trading |
 
 ---
 
-## 🛡️ Security Best Practices
+## 📊 Technical Indicators
 
-1. **Never share `src/priv/config.json`** - Contains your API keys
-2. **Keep permissions at 600** - `chmod 600 src/priv/config.json`
-3. **Disable withdrawals on API key** - Set in Binance.US
-4. **Backup config separately** - Store encrypted backup
-5. **Monitor regularly** - Check logs daily
-6. **Use git carefully** - Add `src/priv/` to `.gitignore`
+### RSI (Wilder's Smoothed)
+- Uses proper Wilder smoothing (α = 1/period)
+- < 30: Oversold (potential buy)
+- > 70: Overbought (potential sell)
+- 40-60: Neutral zone
 
-### .gitignore Example
+### ADX (Trend Strength) - NEW
+- < 20: No trend - **IDEAL for grid trading**
+- 20-25: Developing trend - OK
+- 25-40: Strong trend - **CAUTION**
+- > 40: Very strong trend - **AUTO-PAUSE**
 
+### MACD
+- Histogram > 0 with increasing: Bullish momentum
+- Histogram < 0 with decreasing: Bearish momentum
+- Used to confirm RSI signals
+
+### Grid Bias Logic (CORRECTED)
+
+| RSI | MACD | Signal | Buy Weight |
+|-----|------|--------|------------|
+| < 30 | Turning up | STRONG BUY | 70% |
+| < 30 | Still falling | BUY (caution) | 60% |
+| > 70 | Turning down | STRONG SELL | 30% |
+| > 70 | Still rising | SELL | 40% |
+| 40-60 | Any | NEUTRAL | 50% |
+
+---
+
+## 🛡️ Risk Management
+
+### Exposure Limits
+
+The bot enforces:
+- **Max 75% of portfolio in crypto** (configurable)
+- **Max 12% per single order** (configurable)
+- **Automatic reduction** when exposure exceeds limits
+
+### Stop Loss
+
+Triggers emergency exit when:
+- Portfolio loss exceeds `stop_loss_percent`
+- Drawdown exceeds `stop_loss_percent × 1.5`
+
+### Trend Filter
+
+Grid trading performs poorly in trending markets. The bot:
+- Calculates ADX every cycle
+- **Pauses for 30 minutes** when ADX > 35
+- Logs warnings when ADX > 25
+
+### Volatility Filter
+
+- Calculates ATR-based volatility
+- Skips order placement when volatility exceeds threshold
+- Adjusts dynamically based on market conditions
+
+---
+
+## 💰 P&L Tracking
+
+### FIFO Cost Basis
+
+Every position is tracked with:
+- Entry price
+- Quantity
+- Total cost (including fees)
+- Entry timestamp
+
+When selling, the **oldest positions are sold first** (FIFO), giving accurate realized P&L.
+
+### Tax Log Format
+
+Enhanced CSV with columns:
 ```
-venv/
-src/priv/config.json
-*.log
-tax_transactions.csv
-__pycache__/
-*.pyc
+Date/Time, Type, Asset, Amount, Price, Value, Fee, 
+Net Proceeds, Cost Basis, Realized P&L, Order ID, Notes
 ```
+
+### Generate Tax Report
+
+```bash
+cd src
+python3 tax_summary.py 2025
+```
+
+Outputs:
+- Summary report (console)
+- `form_8949_data_2025.csv` (IRS-ready)
+- `full_report_2025.csv` (detailed)
 
 ---
 
 ## 📈 Monitoring
 
-### Check Bot Status
+### View Live Logs
+
 ```bash
-ps aux | grep main.py
+tail -f data/grid_bot.log
 ```
 
-### View Recent Activity
+### Key Log Messages
+
+| Message | Meaning |
+|---------|---------|
+| `✓ FILLED: BUY` | Buy order completed |
+| `✓ FILLED: SELL` | Sell order completed |
+| `💰 Cycle #X P&L: $Y` | Completed trade cycle with actual profit |
+| `🔄 Grid repositioning` | Price moved, adjusting grid |
+| `⏸️ Trend pause active` | Strong trend detected, waiting |
+| `⚠️ Exposure too high` | Reducing buy orders |
+| `🛑 EMERGENCY STOP` | Stop loss triggered |
+
+### Check Performance
+
 ```bash
-tail -n 50 grid_bot.log
+# Recent P&L
+grep "Cycle.*P&L" data/grid_bot.log | tail -10
+
+# Count cycles
+grep "Cycle #" data/grid_bot.log | wc -l
+
+# Check drawdown
+grep "Max DD" data/grid_bot.log | tail -1
 ```
 
-### Check Profit
-```bash
-grep "P&L:" grid_bot.log | tail -n 1
-```
+---
 
-### Count Completed Cycles
-```bash
-grep "Cycle profit" grid_bot.log | wc -l
-```
+## 🔒 Security
+
+1. **Never share** `src/priv/config.json`
+2. **Disable withdrawals** on your API key
+3. **Set IP restrictions** on Binance.US
+4. **Use `chmod 600`** on config file
+5. **Add to `.gitignore`**:
+   ```
+   src/priv/config.json
+   data/
+   venv/
+   *.log
+   __pycache__/
+   ```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Bot won't start
-```bash
-# Check virtual environment
-source venv/bin/activate
-python3 --version
+### "Grid spacing too tight"
+Bot auto-adjusts. If you see this often, increase `grid_spacing_percent`.
 
-# Check dependencies
-pip list | grep -E "ccxt|numpy"
+### "Trend pause active"
+Normal! The bot detected a strong trend and is waiting. Grid trading doesn't work well in trends.
 
-# Check file paths
-ls -la src/priv/config.json
-```
+### "Exposure too high"
+You have too much crypto. The bot will favor sell orders until balanced.
 
 ### API errors
 ```bash
-# Test connection
 cd src
 python3 test_api.py
-
-# Check permissions in Binance.US
-# Make sure "Enable Spot Trading" is checked
 ```
 
 ### Import errors
 ```bash
-# Make sure you're in the right directory
-cd ~/skizoh-crypto-grid-bot
-pwd
-
-# Check Python path
-cd src
-python3 -c "import sys; print(sys.path)"
+source venv/bin/activate
+pip install numpy ccxt
 ```
 
-### Grid not repositioning
-- Check logs for "Grid repositioning needed" messages
-- Ensure price has moved > 2x grid spacing
-- Wait at least 5 minutes between repositions
+---
+
+## 🎯 Tips for Maximum Profit
+
+1. **Start with Balanced scenario** until you understand the bot
+2. **Use Low Volatility scenario** when ADX < 20 and 24h range < 2%
+3. **Switch to High Volatility** when 24h range > 4%
+4. **Avoid Scalping** unless you have very low fees (VIP tier)
+5. **Monitor ADX** - if it's consistently > 30, consider pausing
+6. **Track your actual P&L** in the tax log, not just cycles
+7. **Fees matter** - tighter grids need more volume to overcome fees
 
 ---
 
 ## 📞 Support
 
-Check logs first: `tail -f grid_bot.log`
-
-Common log messages:
-- `✓ Order FILLED` - Trade executed successfully
-- `🔄 Grid repositioning needed` - Price moved, adjusting grid
-- `📊 Grid bias: BUY` - RSI/MACD favoring buy orders
-- `💰 Cycle profit` - Completed buy → sell cycle
-- `⚠️ High volatility detected` - Market too volatile, pausing
+1. Check logs: `tail -f data/grid_bot.log`
+2. Test API: `python3 test_api.py`
+3. Review config: Ensure all parameters are valid
 
 ---
 
-## 🎯 Tips for Success
-
-1. **Start small** - Test with $100-200 first
-2. **Monitor first 24 hours** - Watch how it behaves
-3. **Check market conditions** - Use recommended scenarios
-4. **Be patient** - Grid trading profits accumulate slowly
-5. **Track taxes** - Run `tax_summary.py` weekly
-6. **Adjust gradually** - Don't change config too often
-7. **Keep learning** - Read the logs, understand the patterns
-
-Good luck! 🚀💰
+**Good luck trading! 🚀💰**
