@@ -28,10 +28,11 @@
 #                                                                          ÆÆÆÆÆÆ                       #
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
-# \file: main.py
-# \Date: 11-26-2025
-# \Description: Entry point for Skizoh Crypto Grid Trading Bot v13
-#               Smart automated trading with RSI, MACD, and dynamic grid positioning
+# =============================================================================
+# SKIZOH CRYPTO GRID TRADING BOT - Entry Point
+# =============================================================================
+# Run this file to start the trading bot
+# =============================================================================
 
 import logging
 import sys
@@ -43,6 +44,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from grid_bot import SmartGridTradingBot
 
 # Configure logging
+os.makedirs('../data', exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -52,43 +55,39 @@ logging.basicConfig(
     ]
 )
 
+
 def print_banner():
-    """Display welcome banner.
-    
-    Args:
-        None
-    
-    Returns:
-        None
-    """
+    """Display welcome banner."""
     print("\n" + "="*70)
-    print("SKIZOH CRYPTO GRID TRADING BOT v13")
-    print("Smart Automated Trading with Advanced Market Analysis")
+    print("       SKIZOH CRYPTO GRID TRADING BOT v14")
+    print("       Smart Automated Trading with Advanced Risk Management")
     print("="*70)
-    print("\n🚀 Features:")
-    print("  • Dynamic Grid Repositioning")
-    print("  • RSI & MACD Trend Detection")
-    print("  • Support/Resistance Level Detection")
-    print("  • Automated Profit Compounding")
-    print("  • Multi-Scenario Configuration")
-    print("  • Real-Time Market Analysis")
+    print("\n🚀 New in v14:")
+    print("  • Proper cost basis tracking (FIFO) for accurate P&L")
+    print("  • Fee-aware minimum grid spacing")
+    print("  • ADX trend filter (pause in strong trends)")
+    print("  • Position exposure limits")
+    print("  • Wilder's RSI (industry standard)")
+    print("  • Enhanced drawdown protection")
+    print("  • Partial fill handling")
     print("\n" + "="*70 + "\n")
 
+
 def main():
-    """Main entry point for the trading bot.
-    
-    Args:
-        None
-    
-    Returns:
-        None
-    """
+    """Main entry point."""
     try:
-        # Display banner
         print_banner()
         
-        # Initialize and run bot with config in priv/ folder
-        bot = SmartGridTradingBot('priv/config.json')
+        # Check for config
+        config_path = 'priv/config.json'
+        if not os.path.exists(config_path):
+            print(f"❌ Config file not found: {config_path}")
+            print("   Copy priv/config.json.template to priv/config.json")
+            print("   and add your API keys.")
+            sys.exit(1)
+        
+        # Initialize and run bot
+        bot = SmartGridTradingBot(config_path)
         bot.run()
         
     except KeyboardInterrupt:
@@ -96,7 +95,10 @@ def main():
         sys.exit(0)
     except Exception as e:
         logging.error(f"Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

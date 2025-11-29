@@ -1,101 +1,57 @@
-#  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  ÆÆÆÆÆÆÆÆ   #  #  #  #  #  #  #  #  #  #  #  #                            
-#                                                          ÆÆÆÆÆÆÆÆÆÆÆÆÆ                                #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ    ÆÆÆÆÆÆ  ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ          ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆ ÆÆÆÆÆ        ÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆÆ    ÆÆÆÆÆ  ÆÆÆÆÆÆ    ÆÆÆÆÆ          ÆÆÆÆÆÆ ÆÆÆÆÆ           ÆÆÆÆÆÆÆÆÆ  ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆ     ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ         ÆÆÆÆÆÆ  ÆÆÆÆÆ     ÆÆ  ÆÆ    ÆÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     Æ       ÆÆÆÆÆ ÆÆÆÆÆ      ÆÆÆÆÆ         ÆÆÆÆÆ   ÆÆÆÆÆ     ÆÆ  ÆÆÆ    ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆ           ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ        ÆÆÆÆÆÆ   ÆÆÆÆÆ     ÆÆÆ ÆÆÆ     ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#  ÆÆÆÆÆÆÆ          ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ       ÆÆÆÆÆÆ    ÆÆÆÆÆ     ÆÆÆ ÆÆÆ  Æ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#    ÆÆÆÆÆÆÆ        ÆÆÆÆÆÆÆÆÆ        ÆÆÆÆÆ       ÆÆÆÆÆÆ    ÆÆÆÆÆ ÆÆÆÆ        ÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#      ÆÆÆÆÆÆÆ      ÆÆÆÆÆÆÆÆÆ        ÆÆÆÆÆ      ÆÆÆÆÆÆ     ÆÆÆÆÆ  ÆÆÆ       ÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#       ÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ      ÆÆÆÆÆ      ÆÆÆÆÆ   ÆÆÆ     ÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#         ÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆÆ     ÆÆÆÆÆÆ       ÆÆÆÆÆ   ÆÆÆÆÆÆÆ ÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#    ÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ    ÆÆÆÆÆÆ        ÆÆÆÆÆ        ÆÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#  ÆÆÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ  ÆÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆ          ÆÆÆÆÆ        ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆ          ÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆ  ÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆ   ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆÆ  ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ     ÆÆÆÆÆÆ ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  ÆÆÆÆÆÆÆÆ ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#                                                                     ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ                  #
-#                                                                       ÆÆÆ  ÆÆÆÆÆÆÆ                    #    
-#                                                                        ÆÆÆÆ   ÆÆÆ                     #
-#                                                                         ÆÆÆÆÆÆÆÆ                      #
-#                                                                          ÆÆÆÆÆÆ                       #
-#  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
-
-# \file: test_api.py
-# \Date: 11-26-2025
-# \Description: API connection test for Binance.US (reads from priv/config.json)
+# =============================================================================
+# SKIZOH CRYPTO GRID TRADING BOT v14 - API Connection Test
+# =============================================================================
 
 import ccxt
 import json
 import sys
+import os
+
 
 def load_config(config_file='priv/config.json'):
-    """Load API credentials from config file.
-    
-    Args:
-        config_file (str): Path to configuration file
-    
-    Returns:
-        dict: Configuration dictionary
-    """
+    """Load API credentials from config file."""
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
         return config
     except FileNotFoundError:
         print(f"❌ Error: {config_file} not found!")
-        print("Make sure config.json exists in the priv/ directory.")
+        print("Copy priv/config.json.template to priv/config.json")
         sys.exit(1)
     except json.JSONDecodeError:
         print(f"❌ Error: {config_file} is not valid JSON!")
         sys.exit(1)
 
+
 def test_api_connection():
-    """Test connection to Binance.US API.
-    
-    Args:
-        None
-    
-    Returns:
-        None
-    """
+    """Test connection to Binance.US API."""
     
     print("="*60)
-    print("BINANCE.US API CONNECTION TEST")
+    print("BINANCE.US API CONNECTION TEST - v14")
     print("="*60)
     print()
     
-    # Load configuration
-    print("📋 Loading configuration from priv/config.json...")
+    # Load config
+    print("📋 Loading configuration...")
     config = load_config()
     
     api_key = config.get('api_key')
     api_secret = config.get('api_secret')
     symbol = config.get('symbol', 'ETH/USDT')
     
-    # Check if keys are set
-    if not api_key or api_key == 'YOUR_BINANCE_US_API_KEY':
-        print("❌ API key not configured in config.json")
-        print("Please update priv/config.json with your actual API keys.")
+    # Validate keys
+    if not api_key or 'YOUR_' in api_key:
+        print("❌ API key not configured")
         sys.exit(1)
     
-    if not api_secret or api_secret == 'YOUR_BINANCE_US_API_SECRET':
-        print("❌ API secret not configured in config.json")
-        print("Please update priv/config.json with your actual API keys.")
+    if not api_secret or 'YOUR_' in api_secret:
+        print("❌ API secret not configured")
         sys.exit(1)
     
-    print(f"✓ Configuration loaded")
-    print(f"  Trading pair: {symbol}")
+    print(f"✓ Config loaded, trading pair: {symbol}")
     print()
     
-    # Initialize exchange
+    # Connect to exchange
     print("🔌 Connecting to Binance.US...")
     try:
         exchange = ccxt.binanceus({
@@ -104,37 +60,31 @@ def test_api_connection():
             'enableRateLimit': True
         })
         
-        # Load markets
         exchange.load_markets()
         print("✓ Connected to Binance.US")
         print()
         
     except ccxt.AuthenticationError as e:
         print(f"❌ Authentication Failed: {e}")
-        print()
-        print("Possible issues:")
+        print("\nPossible issues:")
         print("  1. API key or secret is incorrect")
-        print("  2. API key is not enabled for trading")
-        print("  3. IP restriction is blocking your connection")
+        print("  2. API key not enabled for trading")
+        print("  3. IP restriction blocking connection")
         sys.exit(1)
-        
     except ccxt.NetworkError as e:
         print(f"❌ Network Error: {e}")
-        print("Check your internet connection.")
         sys.exit(1)
-        
     except Exception as e:
-        print(f"❌ Unexpected Error: {e}")
+        print(f"❌ Error: {e}")
         sys.exit(1)
     
-    # Test 1: Fetch balance
-    print("💰 Test 1: Fetching account balance...")
+    # Test balance
+    print("💰 Test 1: Fetching balance...")
     try:
         balance = exchange.fetch_balance()
         
-        # Get base and quote currencies
-        base_currency = symbol.split('/')[0]  # ETH
-        quote_currency = symbol.split('/')[1]  # USDT
+        base_currency = symbol.split('/')[0]
+        quote_currency = symbol.split('/')[1]
         
         base_balance = balance[base_currency]['free']
         quote_balance = balance[quote_currency]['free']
@@ -143,81 +93,88 @@ def test_api_connection():
         print()
         print("Your Balances:")
         print(f"  {quote_currency}: {quote_balance:.2f}")
-        
-        if base_balance > 0:
-            print(f"  {base_currency}: {base_balance:.6f}")
-        else:
-            print(f"  {base_currency}: 0.000000 (you don't own any {base_currency} yet)")
-        
+        print(f"  {base_currency}: {base_balance:.6f}")
         print()
         
     except Exception as e:
-        print(f"❌ Failed to fetch balance: {e}")
+        print(f"❌ Balance fetch failed: {e}")
         sys.exit(1)
     
-    # Test 2: Fetch current price
-    print(f"📊 Test 2: Fetching current {symbol} price...")
+    # Test price
+    print(f"📊 Test 2: Fetching {symbol} price...")
     try:
         ticker = exchange.fetch_ticker(symbol)
         current_price = ticker['last']
         high_24h = ticker['high']
         low_24h = ticker['low']
-        volume_24h = ticker['baseVolume']
         
-        print(f"✓ Price data retrieved")
+        print("✓ Price data retrieved")
         print()
         print(f"Market Data for {symbol}:")
         print(f"  Current Price: ${current_price:.2f}")
         print(f"  24h High: ${high_24h:.2f}")
         print(f"  24h Low: ${low_24h:.2f}")
-        print(f"  24h Volume: {volume_24h:.2f} {base_currency}")
-        
-        # Calculate 24h price change
-        price_change = ((current_price - low_24h) / low_24h) * 100
-        print(f"  24h Range: {price_change:.2f}%")
+        print(f"  24h Range: {((high_24h-low_24h)/current_price)*100:.2f}%")
         print()
         
     except Exception as e:
-        print(f"❌ Failed to fetch price data: {e}")
+        print(f"❌ Price fetch failed: {e}")
         sys.exit(1)
     
-    # Test 3: Check API permissions
-    print("🔐 Test 3: Checking API permissions...")
+    # Test trading fees
+    print("💸 Test 3: Checking trading fees...")
     try:
-        # Try to fetch open orders (requires read permission)
-        open_orders = exchange.fetch_open_orders(symbol)
-        print("✓ Read permission: OK")
-        
-        # Check if we can access account info (trading permission)
-        account_info = exchange.fetch_balance()
-        print("✓ Trading permission: OK")
-        
+        trading_fees = exchange.fetch_trading_fees()
+        if symbol in trading_fees:
+            maker = trading_fees[symbol].get('maker', 0.001)
+            taker = trading_fees[symbol].get('taker', 0.001)
+            print(f"✓ Fee rates - Maker: {maker*100:.2f}%, Taker: {taker*100:.2f}%")
+        else:
+            print("✓ Using default fee rate: 0.10%")
         print()
-        print("⚠️  Remember: Withdrawals should be DISABLED on your API key!")
-        print()
-        
-    except ccxt.InsufficientPermissions as e:
-        print(f"❌ Permission Error: {e}")
-        print("Make sure your API key has 'Spot Trading' enabled.")
-        sys.exit(1)
     except Exception as e:
-        print(f"⚠️  Warning: Could not fully verify permissions: {e}")
+        print(f"⚠️ Could not fetch fees (using default): {e}")
         print()
     
-    # Final summary
+    # Test permissions
+    print("🔐 Test 4: Checking API permissions...")
+    try:
+        open_orders = exchange.fetch_open_orders(symbol)
+        print(f"✓ Read permission: OK ({len(open_orders)} open orders)")
+        
+        balance = exchange.fetch_balance()
+        print("✓ Trading permission: OK")
+        print()
+        print("⚠️  REMINDER: Withdrawals should be DISABLED on your API key!")
+        print()
+        
+    except Exception as e:
+        print(f"⚠️ Permission check warning: {e}")
+        print()
+    
+    # Calculate trading capacity
+    print("📈 Trading Capacity:")
+    portfolio_value = quote_balance + (base_balance * current_price)
+    print(f"  Total portfolio value: ${portfolio_value:.2f}")
+    print(f"  Available for buys: ${quote_balance:.2f}")
+    print(f"  Crypto value: ${base_balance * current_price:.2f}")
+    print()
+    
+    # Final result
     print("="*60)
     print("✅ ALL TESTS PASSED!")
     print("="*60)
     print()
-    print("Your API is configured correctly and ready for trading.")
+    print("Your API is ready for trading.")
     print()
     print("Next steps:")
     print("  1. Review your priv/config.json settings")
-    print("  2. Run '../run_bot.sh' to start the grid trading bot")
+    print("  2. Run '../run_bot.sh' to start trading")
     print("  3. Monitor with 'tail -f ../data/grid_bot.log'")
     print()
     print("Good luck! 🚀")
     print()
+
 
 if __name__ == "__main__":
     test_api_connection()

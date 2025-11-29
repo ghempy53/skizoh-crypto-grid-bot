@@ -1,51 +1,17 @@
-#  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  ÆÆÆÆÆÆÆÆ   #  #  #  #  #  #  #  #  #  #  #  #                            
-#                                                          ÆÆÆÆÆÆÆÆÆÆÆÆÆ                                #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ    ÆÆÆÆÆÆ  ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ          ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆ ÆÆÆÆÆ        ÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆÆ    ÆÆÆÆÆ  ÆÆÆÆÆÆ    ÆÆÆÆÆ          ÆÆÆÆÆÆ ÆÆÆÆÆ           ÆÆÆÆÆÆÆÆÆ  ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆ     ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ         ÆÆÆÆÆÆ  ÆÆÆÆÆ     ÆÆ  ÆÆ    ÆÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     Æ       ÆÆÆÆÆ ÆÆÆÆÆ      ÆÆÆÆÆ         ÆÆÆÆÆ   ÆÆÆÆÆ     ÆÆ  ÆÆÆ    ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆ           ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ        ÆÆÆÆÆÆ   ÆÆÆÆÆ     ÆÆÆ ÆÆÆ     ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#  ÆÆÆÆÆÆÆ          ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ       ÆÆÆÆÆÆ    ÆÆÆÆÆ     ÆÆÆ ÆÆÆ  Æ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#    ÆÆÆÆÆÆÆ        ÆÆÆÆÆÆÆÆÆ        ÆÆÆÆÆ       ÆÆÆÆÆÆ    ÆÆÆÆÆ ÆÆÆÆ        ÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#      ÆÆÆÆÆÆÆ      ÆÆÆÆÆÆÆÆÆ        ÆÆÆÆÆ      ÆÆÆÆÆÆ     ÆÆÆÆÆ  ÆÆÆ       ÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#       ÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆ       ÆÆÆÆÆ      ÆÆÆÆÆ      ÆÆÆÆÆ   ÆÆÆ     ÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#         ÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆÆ     ÆÆÆÆÆÆ       ÆÆÆÆÆ   ÆÆÆÆÆÆÆ ÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#    ÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ    ÆÆÆÆÆÆ        ÆÆÆÆÆ        ÆÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-#  ÆÆÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ  ÆÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆ          ÆÆÆÆÆ        ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆ     ÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆ   ÆÆÆÆÆÆ          ÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆ  ÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ   ÆÆÆÆÆÆ   ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆ      ÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆÆ  ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆ    ÆÆÆÆÆ     ÆÆÆÆÆÆ ÆÆÆÆÆ  ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ     ÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ ÆÆÆÆÆÆ     ÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆ    ÆÆÆÆÆÆÆÆÆÆ   ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  ÆÆÆÆÆÆÆÆ ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-# ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ  #
-#                                                                     ÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆÆ                  #
-#                                                                       ÆÆÆ  ÆÆÆÆÆÆÆ                    #    
-#                                                                        ÆÆÆÆ   ÆÆÆ                     #
-#                                                                         ÆÆÆÆÆÆÆÆ                      #
-#                                                                          ÆÆÆÆÆÆ                       #
-#  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
-
-# \file: tax_summary.py
-# \Date: 11-26-2025
-# \Description: Tax summary generator for crypto grid trading bot
-#               Generates reports for US tax filing (IRS Form 8949)
+# =============================================================================
+# SKIZOH CRYPTO GRID TRADING BOT - Tax Summary Generator
+# =============================================================================
+# Generates IRS Form 8949 compatible reports with proper P&L tracking
+# =============================================================================
 
 import csv
 from datetime import datetime
 from collections import defaultdict
+import os
+
 
 def load_transactions(filename='../data/tax_transactions.csv'):
-    """Load all transactions from CSV.
-    
-    Args:
-        filename (str): Path to tax transactions CSV file
-    
-    Returns:
-        list: List of transaction dictionaries
-    """
+    """Load all transactions from CSV."""
     transactions = []
     
     try:
@@ -55,172 +21,113 @@ def load_transactions(filename='../data/tax_transactions.csv'):
                 transactions.append(row)
         return transactions
     except FileNotFoundError:
-        print(f"Error: {filename} not found. Run the bot first to generate transactions.")
+        print(f"Error: {filename} not found. Run the bot first.")
         return []
 
-def calculate_capital_gains(transactions):
-    """Calculate capital gains using FIFO (First In First Out) method.
+
+def calculate_summary(transactions):
+    """Calculate summary statistics from transactions."""
+    if not transactions:
+        return None
     
-    Args:
-        transactions (list): List of transaction dictionaries
-    
-    Returns:
-        tuple: (sales list, total gain, total proceeds, total cost basis)
-    """
-    # Track purchases (cost basis) for each asset
-    purchase_queue = defaultdict(list)  # asset -> [(amount, price, date, fee)]
-    
-    # Track all sales and their gains
-    sales = []
-    total_gain = 0
-    total_proceeds = 0
-    total_cost_basis = 0
+    total_buys = 0
+    total_sells = 0
+    total_buy_value = 0
+    total_sell_value = 0
+    total_fees = 0
+    total_realized_pnl = 0
     
     for tx in transactions:
-        tx_type = tx['Transaction Type']
-        asset = tx['Asset']
-        amount = float(tx['Amount'])
-        price = float(tx['Price (USD)'])
-        fee = float(tx['Fee (USD)'])
-        date = tx['Date/Time']
+        fee = float(tx.get('Fee (USD)', 0) or 0)
+        total_fees += fee
         
-        if tx_type == 'BUY':
-            # Add to purchase queue (cost basis includes fee)
-            cost_per_unit = price + (fee / amount)
-            purchase_queue[asset].append({
-                'amount': amount,
-                'cost_per_unit': cost_per_unit,
-                'date': date,
-                'total_cost': amount * cost_per_unit
-            })
-        
-        elif tx_type == 'SELL':
-            # Calculate gain using FIFO
-            remaining_to_sell = amount
-            sale_proceeds = (amount * price) - fee
-            sale_cost_basis = 0
-            
-            while remaining_to_sell > 0 and purchase_queue[asset]:
-                purchase = purchase_queue[asset][0]
-                
-                if purchase['amount'] <= remaining_to_sell:
-                    # Use entire purchase
-                    sale_cost_basis += purchase['total_cost']
-                    remaining_to_sell -= purchase['amount']
-                    purchase_queue[asset].pop(0)
-                else:
-                    # Use partial purchase
-                    portion = remaining_to_sell / purchase['amount']
-                    sale_cost_basis += purchase['total_cost'] * portion
-                    purchase['amount'] -= remaining_to_sell
-                    purchase['total_cost'] -= purchase['total_cost'] * portion
-                    remaining_to_sell = 0
-            
-            # Calculate gain/loss
-            gain = sale_proceeds - sale_cost_basis
-            
-            sales.append({
-                'date': date,
-                'asset': asset,
-                'amount': amount,
-                'proceeds': sale_proceeds,
-                'cost_basis': sale_cost_basis,
-                'gain_loss': gain
-            })
-            
-            total_gain += gain
-            total_proceeds += sale_proceeds
-            total_cost_basis += sale_cost_basis
+        if tx['Transaction Type'] == 'BUY':
+            total_buys += 1
+            total_buy_value += float(tx.get('Total Value (USD)', 0) or 0)
+        elif tx['Transaction Type'] == 'SELL':
+            total_sells += 1
+            total_sell_value += float(tx.get('Total Value (USD)', 0) or 0)
+            # Use pre-calculated P&L if available
+            pnl = float(tx.get('Realized P&L (USD)', 0) or 0)
+            total_realized_pnl += pnl
     
-    return sales, total_gain, total_proceeds, total_cost_basis
+    return {
+        'total_buys': total_buys,
+        'total_sells': total_sells,
+        'total_buy_value': total_buy_value,
+        'total_sell_value': total_sell_value,
+        'total_fees': total_fees,
+        'total_realized_pnl': total_realized_pnl,
+        'net_after_fees': total_realized_pnl - total_fees
+    }
 
-def generate_summary_report(transactions):
-    """Generate a comprehensive tax summary.
-    
-    Args:
-        transactions (list): List of transaction dictionaries
-    
-    Returns:
-        None
-    """
+
+def generate_summary_report(transactions, year=None):
+    """Generate comprehensive tax summary."""
     if not transactions:
         print("No transactions to summarize.")
         return
     
+    # Filter by year if specified
+    if year:
+        transactions = [
+            tx for tx in transactions
+            if datetime.strptime(tx['Date/Time'], '%Y-%m-%d %H:%M:%S').year == year
+        ]
+        if not transactions:
+            print(f"No transactions found for year {year}")
+            return
+    
+    summary = calculate_summary(transactions)
+    
     print("\n" + "="*70)
-    print("CRYPTO TRADING TAX SUMMARY - US TAX YEAR")
+    print(f"CRYPTO TRADING TAX SUMMARY {'- ' + str(year) if year else ''}")
     print("="*70)
     
-    # Overall statistics
-    total_buys = sum(1 for tx in transactions if tx['Transaction Type'] == 'BUY')
-    total_sells = sum(1 for tx in transactions if tx['Transaction Type'] == 'SELL')
-    total_fees = sum(float(tx['Fee (USD)']) for tx in transactions)
-    
     print(f"\nTransaction Summary:")
-    print(f"  Total Buy Orders: {total_buys}")
-    print(f"  Total Sell Orders: {total_sells}")
-    print(f"  Total Fees Paid: ${total_fees:.2f}")
+    print(f"  Total Buy Orders:  {summary['total_buys']}")
+    print(f"  Total Sell Orders: {summary['total_sells']}")
+    print(f"  Total Fees Paid:   ${summary['total_fees']:.2f}")
     
-    # Calculate capital gains
-    sales, total_gain, total_proceeds, total_cost_basis = calculate_capital_gains(transactions)
+    print(f"\nValue Summary:")
+    print(f"  Total Bought:      ${summary['total_buy_value']:.2f}")
+    print(f"  Total Sold:        ${summary['total_sell_value']:.2f}")
     
-    print(f"\nCapital Gains/Loss Summary:")
-    print(f"  Total Proceeds: ${total_proceeds:.2f}")
-    print(f"  Total Cost Basis: ${total_cost_basis:.2f}")
-    print(f"  Net Gain/Loss: ${total_gain:.2f}")
+    print(f"\nProfit/Loss Summary:")
+    print(f"  Realized P&L:      ${summary['total_realized_pnl']:.2f}")
+    print(f"  Net After Fees:    ${summary['net_after_fees']:.2f}")
     
-    if total_gain > 0:
-        print(f"  Status: TAXABLE GAIN (you owe taxes on this)")
+    if summary['total_realized_pnl'] > 0:
+        print(f"\n  Status: TAXABLE GAIN")
+        print(f"  Note: Grid trading = typically short-term capital gains")
     else:
-        print(f"  Status: CAPITAL LOSS (can offset other gains)")
-    
-    # Detailed sales breakdown
-    if sales:
-        print(f"\n" + "-"*70)
-        print(f"Detailed Sales (for IRS Form 8949):")
-        print("-"*70)
-        
-        for i, sale in enumerate(sales, 1):
-            print(f"\nSale #{i} - {sale['date']}")
-            print(f"  Asset: {sale['asset']}")
-            print(f"  Amount Sold: {sale['amount']:.6f}")
-            print(f"  Proceeds: ${sale['proceeds']:.2f}")
-            print(f"  Cost Basis: ${sale['cost_basis']:.2f}")
-            print(f"  Gain/Loss: ${sale['gain_loss']:.2f}")
+        print(f"\n  Status: CAPITAL LOSS")
+        print(f"  Note: Can offset other capital gains")
     
     print("\n" + "="*70)
-    
-    # Tax filing notes
-    print("\nIMPORTANT TAX FILING NOTES:")
+    print("\nTAX FILING NOTES:")
     print("-" * 70)
-    print("1. Report on IRS Form 8949 (Sales and Dispositions of Capital Assets)")
-    print("2. Transfer totals to Schedule D (Capital Gains and Losses)")
-    print("3. This bot uses FIFO (First In First Out) accounting method")
-    print("4. Keep tax_transactions.csv for your records (7 years)")
-    print("5. Consult a tax professional for personalized advice")
-    print("\n6. Short-term vs Long-term:")
-    print("   - Held < 1 year = Short-term (taxed as ordinary income)")
-    print("   - Held > 1 year = Long-term (lower tax rate)")
-    print("   Grid trading = typically all short-term gains")
+    print("1. Report on IRS Form 8949 (Sales and Dispositions)")
+    print("2. Transfer totals to Schedule D")
+    print("3. This bot uses FIFO accounting")
+    print("4. Grid trading = typically all short-term gains")
+    print("5. Keep records for 7 years")
+    print("6. Consult a tax professional")
     print("="*70 + "\n")
 
+
 def export_form_8949_csv(transactions, year=None):
-    """Export data in format ready for Form 8949.
-    
-    Args:
-        transactions (list): List of transaction dictionaries
-        year (int): Tax year (defaults to current year)
-    
-    Returns:
-        None
-    """
+    """Export Form 8949 compatible CSV."""
     if year is None:
         year = datetime.now().year
     
-    sales, _, _, _ = calculate_capital_gains(transactions)
+    # Filter sells only (dispositions)
+    sells = [tx for tx in transactions 
+             if tx['Transaction Type'] == 'SELL'
+             and datetime.strptime(tx['Date/Time'], '%Y-%m-%d %H:%M:%S').year == year]
     
-    if not sales:
-        print("No sales to export.")
+    if not sells:
+        print(f"No sales to export for {year}.")
         return
     
     filename = f'../data/form_8949_data_{year}.csv'
@@ -228,80 +135,84 @@ def export_form_8949_csv(transactions, year=None):
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
         
-        # Headers for Form 8949
+        # Form 8949 headers
         writer.writerow([
             'Description of Property',
             'Date Acquired',
             'Date Sold',
-            'Proceeds',
+            'Proceeds (Sales Price)',
             'Cost Basis',
-            'Gain or Loss'
+            'Gain or Loss',
+            'Notes'
         ])
         
-        for sale in sales:
+        for sale in sells:
+            proceeds = float(sale.get('Net Proceeds (USD)', 0) or 0)
+            cost_basis = float(sale.get('Cost Basis (USD)', 0) or 0)
+            gain_loss = float(sale.get('Realized P&L (USD)', 0) or 0)
+            
             writer.writerow([
-                f"{sale['amount']:.6f} {sale['asset']}",
+                f"{sale['Amount']} {sale['Asset']}",
                 'Various (FIFO)',
-                sale['date'],
-                f"${sale['proceeds']:.2f}",
-                f"${sale['cost_basis']:.2f}",
-                f"${sale['gain_loss']:.2f}"
+                sale['Date/Time'].split(' ')[0],
+                f"${proceeds:.2f}",
+                f"${cost_basis:.2f}",
+                f"${gain_loss:.2f}",
+                sale.get('Notes', '')
             ])
     
     print(f"\n✅ Form 8949 data exported to: {filename}")
-    print("You can import this into tax software or give to your accountant.\n")
+    print("Import this into tax software or give to your accountant.\n")
 
-def generate_year_end_report(year=None):
-    """Generate complete year-end tax report.
-    
-    Args:
-        year (int): Tax year (defaults to current year)
-    
-    Returns:
-        None
-    """
+
+def export_full_report(transactions, year=None):
+    """Export detailed transaction report."""
     if year is None:
         year = datetime.now().year
     
-    print(f"\nGenerating tax report for year {year}...")
-    
-    transactions = load_transactions()
+    if year:
+        transactions = [
+            tx for tx in transactions
+            if datetime.strptime(tx['Date/Time'], '%Y-%m-%d %H:%M:%S').year == year
+        ]
     
     if not transactions:
+        print(f"No transactions for {year}")
         return
     
-    # Filter transactions by year
-    year_transactions = [
-        tx for tx in transactions 
-        if datetime.strptime(tx['Date/Time'], '%Y-%m-%d %H:%M:%S').year == year
-    ]
+    filename = f'../data/full_report_{year}.csv'
     
-    if not year_transactions:
-        print(f"No transactions found for year {year}")
-        return
+    with open(filename, 'w', newline='') as f:
+        if transactions:
+            writer = csv.DictWriter(f, fieldnames=transactions[0].keys())
+            writer.writeheader()
+            writer.writerows(transactions)
     
-    # Generate reports
-    generate_summary_report(year_transactions)
-    export_form_8949_csv(year_transactions, year)
+    print(f"✅ Full report exported to: {filename}\n")
+
 
 if __name__ == "__main__":
     import sys
     
     print("="*70)
-    print("CRYPTO GRID BOT - TAX SUMMARY GENERATOR")
+    print("SKIZOH GRID BOT v14 - TAX SUMMARY GENERATOR")
     print("="*70)
     
-    # Check if year specified
+    # Check for year argument
+    year = None
     if len(sys.argv) > 1:
         try:
             year = int(sys.argv[1])
-            generate_year_end_report(year)
         except ValueError:
             print("Invalid year. Usage: python tax_summary.py [year]")
-    else:
-        # Default to current year
-        generate_year_end_report()
+            sys.exit(1)
     
-    print("\n💡 TIP: Run this script regularly to track your gains/losses")
-    print("💡 Usage: python tax_summary.py [year]")
-    print("   Example: python tax_summary.py 2025\n")
+    transactions = load_transactions()
+    
+    if transactions:
+        generate_summary_report(transactions, year)
+        export_form_8949_csv(transactions, year or datetime.now().year)
+        export_full_report(transactions, year or datetime.now().year)
+    
+    print("💡 TIP: Run this weekly to track your gains/losses")
+    print("💡 Usage: python tax_summary.py [year]\n")
