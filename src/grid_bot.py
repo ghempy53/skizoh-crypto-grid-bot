@@ -89,7 +89,7 @@ class SmartGridTradingBot:
         self.cycles_completed = 0
         
         # Tax logging
-        self.tax_log_file = 'tax_transactions.csv'
+        self.tax_log_file = '../data/tax_transactions.csv'
         self.initialize_tax_log()
         
         # Grid repositioning
