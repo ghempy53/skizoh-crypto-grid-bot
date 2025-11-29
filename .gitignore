@@ -17,6 +17,8 @@ venv/
 
 # Ignore VS Code settings
 .vscode/
+*.code-workspace
+
 
 # Ignore real config (template stays tracked)
 # config.json
