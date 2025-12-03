@@ -37,20 +37,29 @@
 import logging
 import sys
 import os
+from pathlib import Path
+
+# Get the directory where this script is located
+SCRIPT_DIR = Path(__file__).parent.resolve()
+PROJECT_ROOT = SCRIPT_DIR.parent
 
 # Add src directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(SCRIPT_DIR))
 
 from grid_bot import SmartGridTradingBot
 
-# Configure logging
-os.makedirs('../data', exist_ok=True)
+# Ensure data directory exists using absolute path
+DATA_DIR = PROJECT_ROOT / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Configure logging with absolute path
+LOG_FILE = DATA_DIR / 'grid_bot.log'
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('../data/grid_bot.log'),
+        logging.FileHandler(str(LOG_FILE)),
         logging.StreamHandler()
     ]
 )
@@ -59,10 +68,10 @@ logging.basicConfig(
 def print_banner():
     """Display welcome banner."""
     print("\n" + "="*70)
-    print("       SKIZOH CRYPTO GRID TRADING BOT v14")
+    print("       SKIZOH CRYPTO GRID TRADING BOT v14.1")
     print("       Smart Automated Trading with Advanced Risk Management")
     print("="*70)
-    print("\n🚀 New in v14:")
+    print("\n🚀 New in v14.1:")
     print("  • Proper cost basis tracking (FIFO) for accurate P&L")
     print("  • Fee-aware minimum grid spacing")
     print("  • ADX trend filter (pause in strong trends)")
@@ -70,6 +79,8 @@ def print_banner():
     print("  • Wilder's RSI (industry standard)")
     print("  • Enhanced drawdown protection")
     print("  • Partial fill handling")
+    print("  • State persistence across restarts")
+    print("  • Improved error handling")
     print("\n" + "="*70 + "\n")
 
 
@@ -78,16 +89,16 @@ def main():
     try:
         print_banner()
         
-        # Check for config
-        config_path = 'priv/config.json'
-        if not os.path.exists(config_path):
+        # Check for config using path relative to script location
+        config_path = SCRIPT_DIR / 'priv' / 'config.json'
+        if not config_path.exists():
             print(f"❌ Config file not found: {config_path}")
             print("   Copy priv/config.json.template to priv/config.json")
             print("   and add your API keys.")
             sys.exit(1)
         
-        # Initialize and run bot
-        bot = SmartGridTradingBot(config_path)
+        # Initialize and run bot with absolute path
+        bot = SmartGridTradingBot(str(config_path))
         bot.run()
         
     except KeyboardInterrupt:

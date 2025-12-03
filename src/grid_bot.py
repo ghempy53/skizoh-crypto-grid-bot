@@ -29,17 +29,15 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine
+# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v14.1
 # =============================================================================
-# Major improvements over v13:
-# - Proper cost basis tracking (FIFO) for accurate P&L
-# - Fee-aware minimum grid spacing
-# - Position/exposure limits to prevent over-concentration
-# - ADX trend filter (pause in strong trends)
-# - Partial fill handling
-# - Smarter grid repositioning that preserves positions
-# - More conservative profit compounding
-# - Better emergency handling
+# Major improvements over v14:
+# - Fixed path handling for data files
+# - State persistence for position tracking
+# - Improved error handling and validation
+# - Fixed potential division by zero issues
+# - Removed duplicate logging configuration
+# - Better handling of edge cases
 # =============================================================================
 
 import ccxt
@@ -48,6 +46,8 @@ import json
 import logging
 from datetime import datetime
 from collections import deque
+from pathlib import Path
+from typing import Dict, List, Optional, Any
 import numpy as np
 import csv
 import os
@@ -55,28 +55,83 @@ import os
 from config_manager import ConfigManager
 from market_analysis import MarketAnalyzer
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('grid_bot.log'),
-        logging.StreamHandler()
-    ]
-)
+# Get logger (configured in main.py)
+logger = logging.getLogger(__name__)
 
 
 class PositionTracker:
     """Track positions with proper cost basis using FIFO."""
     
-    def __init__(self):
+    def __init__(self, state_file: Optional[str] = None):
         self.positions = deque()  # FIFO queue of (quantity, price, timestamp)
-        self.total_quantity = 0
-        self.total_cost = 0
-        self.realized_pnl = 0
-        self.total_fees_paid = 0
+        self.total_quantity = 0.0
+        self.total_cost = 0.0
+        self.realized_pnl = 0.0
+        self.total_fees_paid = 0.0
+        self.state_file = state_file
+        
+        # Load existing state if available
+        if state_file:
+            self._load_state()
     
-    def add_position(self, quantity, price, fee=0):
+    def _load_state(self):
+        """Load position state from file."""
+        try:
+            if self.state_file and os.path.exists(self.state_file):
+                with open(self.state_file, 'r') as f:
+                    state = json.load(f)
+                
+                self.total_quantity = float(state.get('total_quantity', 0))
+                self.total_cost = float(state.get('total_cost', 0))
+                self.realized_pnl = float(state.get('realized_pnl', 0))
+                self.total_fees_paid = float(state.get('total_fees_paid', 0))
+                
+                # Restore positions
+                for pos in state.get('positions', []):
+                    self.positions.append({
+                        'quantity': float(pos['quantity']),
+                        'price': float(pos['price']),
+                        'cost_basis': float(pos['cost_basis']),
+                        'timestamp': datetime.fromisoformat(pos['timestamp'])
+                    })
+                
+                logger.info(f"Loaded position state: {self.total_quantity:.6f} units, "
+                           f"realized P&L: ${self.realized_pnl:.2f}")
+        except Exception as e:
+            logger.warning(f"Could not load position state: {e}")
+    
+    def _save_state(self):
+        """Save position state to file."""
+        try:
+            if self.state_file:
+                state = {
+                    'total_quantity': self.total_quantity,
+                    'total_cost': self.total_cost,
+                    'realized_pnl': self.realized_pnl,
+                    'total_fees_paid': self.total_fees_paid,
+                    'positions': [
+                        {
+                            'quantity': pos['quantity'],
+                            'price': pos['price'],
+                            'cost_basis': pos['cost_basis'],
+                            'timestamp': pos['timestamp'].isoformat()
+                        }
+                        for pos in self.positions
+                    ],
+                    'last_updated': datetime.now().isoformat()
+                }
+                
+                with open(self.state_file, 'w') as f:
+                    json.dump(state, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Could not save position state: {e}")
+    
+    def add_position(self, quantity: float, price: float, fee: float = 0):
         """Add a buy position."""
+        if quantity <= 0 or price <= 0:
+            logger.warning(f"Invalid position: quantity={quantity}, price={price}")
+            return
+        
         cost_basis = (quantity * price) + fee
         self.positions.append({
             'quantity': quantity,
@@ -88,16 +143,25 @@ class PositionTracker:
         self.total_cost += cost_basis
         self.total_fees_paid += fee
         
-        logging.debug(f"Added position: {quantity} @ ${price:.2f}, cost basis: ${cost_basis:.2f}")
+        logger.debug(f"Added position: {quantity} @ ${price:.2f}, cost basis: ${cost_basis:.2f}")
+        self._save_state()
     
-    def close_position(self, quantity, sell_price, fee=0):
+    def close_position(self, quantity: float, sell_price: float, fee: float = 0) -> Dict[str, float]:
         """Close position using FIFO and calculate realized P&L."""
+        if quantity <= 0:
+            return {'quantity': 0, 'sell_price': sell_price, 'cost_basis': 0, 
+                    'proceeds': 0, 'pnl': 0, 'fee': fee}
+        
         if quantity > self.total_quantity:
-            logging.warning(f"Attempting to sell {quantity} but only have {self.total_quantity}")
+            logger.warning(f"Attempting to sell {quantity} but only have {self.total_quantity}")
             quantity = self.total_quantity
         
+        if quantity <= 0:
+            return {'quantity': 0, 'sell_price': sell_price, 'cost_basis': 0,
+                    'proceeds': 0, 'pnl': 0, 'fee': fee}
+        
         remaining = quantity
-        total_cost_basis = 0
+        total_cost_basis = 0.0
         
         while remaining > 0 and self.positions:
             oldest = self.positions[0]
@@ -111,14 +175,15 @@ class PositionTracker:
                 self.positions.popleft()
             else:
                 # Partial use
-                fraction = remaining / oldest['quantity']
-                used_cost = oldest['cost_basis'] * fraction
-                total_cost_basis += used_cost
-                
-                oldest['quantity'] -= remaining
-                oldest['cost_basis'] -= used_cost
-                self.total_quantity -= remaining
-                self.total_cost -= used_cost
+                if oldest['quantity'] > 0:
+                    fraction = remaining / oldest['quantity']
+                    used_cost = oldest['cost_basis'] * fraction
+                    total_cost_basis += used_cost
+                    
+                    oldest['quantity'] -= remaining
+                    oldest['cost_basis'] -= used_cost
+                    self.total_quantity -= remaining
+                    self.total_cost -= used_cost
                 remaining = 0
         
         # Calculate P&L
@@ -127,7 +192,8 @@ class PositionTracker:
         self.realized_pnl += pnl
         self.total_fees_paid += fee
         
-        logging.debug(f"Closed position: {quantity} @ ${sell_price:.2f}, P&L: ${pnl:.2f}")
+        logger.debug(f"Closed position: {quantity} @ ${sell_price:.2f}, P&L: ${pnl:.2f}")
+        self._save_state()
         
         return {
             'quantity': quantity,
@@ -138,44 +204,59 @@ class PositionTracker:
             'fee': fee
         }
     
-    def get_average_cost(self):
+    def get_average_cost(self) -> float:
         """Get weighted average cost basis."""
         if self.total_quantity <= 0:
-            return 0
+            return 0.0
         return self.total_cost / self.total_quantity
     
-    def get_unrealized_pnl(self, current_price):
+    def get_unrealized_pnl(self, current_price: float) -> float:
         """Calculate unrealized P&L at current price."""
-        if self.total_quantity <= 0:
-            return 0
+        if self.total_quantity <= 0 or current_price <= 0:
+            return 0.0
         market_value = self.total_quantity * current_price
         return market_value - self.total_cost
     
-    def get_summary(self, current_price):
+    def get_summary(self, current_price: float) -> Dict[str, Any]:
         """Get full position summary."""
+        if current_price <= 0:
+            current_price = 0.0
+        
+        market_value = self.total_quantity * current_price if current_price > 0 else 0
+        unrealized = self.get_unrealized_pnl(current_price)
+        
         return {
             'total_quantity': self.total_quantity,
             'total_cost': self.total_cost,
             'average_cost': self.get_average_cost(),
-            'market_value': self.total_quantity * current_price,
-            'unrealized_pnl': self.get_unrealized_pnl(current_price),
+            'market_value': market_value,
+            'unrealized_pnl': unrealized,
             'realized_pnl': self.realized_pnl,
-            'total_pnl': self.realized_pnl + self.get_unrealized_pnl(current_price),
+            'total_pnl': self.realized_pnl + unrealized,
             'total_fees': self.total_fees_paid,
             'num_positions': len(self.positions)
         }
 
 
 class SmartGridTradingBot:
-    """Smart grid trading bot v14 with advanced risk management."""
+    """Smart grid trading bot v14.1 with advanced risk management."""
     
     # Exchange fee rate (Binance.US maker/taker)
     DEFAULT_FEE_RATE = 0.001  # 0.1%
     
-    def __init__(self, config_file='config.json'):
+    def __init__(self, config_file: str = 'config.json'):
         """Initialize the smart grid trading bot."""
-        self.config_manager = ConfigManager(config_file)
+        # Resolve config file path
+        self.config_file_path = Path(config_file).resolve()
+        self.project_root = self.config_file_path.parent.parent
+        self.data_dir = self.project_root / 'data'
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.config_manager = ConfigManager(str(self.config_file_path))
         config = self.config_manager.load_config()
+        
+        # Validate required config fields
+        self._validate_config(config)
         
         # API credentials
         self.api_key = config['api_key']
@@ -193,36 +274,51 @@ class SmartGridTradingBot:
         self.exchange = self.initialize_exchange()
         self.market_analyzer = MarketAnalyzer(self.exchange, self.symbol)
         
-        # Position tracking (NEW)
-        self.position_tracker = PositionTracker()
+        # Position tracking with state persistence
+        position_state_file = str(self.data_dir / 'position_state.json')
+        self.position_tracker = PositionTracker(state_file=position_state_file)
         
         # Trading state
-        self.grid_levels = []
-        self.active_orders = {}
-        self.initial_investment = 0
+        self.grid_levels: List[Dict] = []
+        self.active_orders: Dict[str, Dict] = {}
+        self.initial_investment = 0.0
         self.cycles_completed = 0
         
-        # Exposure limits (NEW)
-        self.max_position_percent = config.get('max_position_percent', 80)  # Max % of capital in crypto
-        self.max_single_order_percent = config.get('max_single_order_percent', 10)  # Max single order size
+        # Exposure limits
+        self.max_position_percent = config.get('max_position_percent', 80)
+        self.max_single_order_percent = config.get('max_single_order_percent', 10)
         
-        # Tax logging
-        self.tax_log_file = '../data/tax_transactions.csv'
+        # Tax logging with absolute path
+        self.tax_log_file = str(self.data_dir / 'tax_transactions.csv')
         self.initialize_tax_log()
         
         # Grid repositioning
-        self.grid_center_price = None
+        self.grid_center_price: Optional[float] = None
         self.last_grid_update = time.time()
         
         # Performance tracking
-        self.start_time = None
-        self.peak_value = 0
-        self.max_drawdown = 0
+        self.start_time: Optional[datetime] = None
+        self.peak_value = 0.0
+        self.max_drawdown = 0.0
         
         # Trend pause state
-        self.trend_pause_until = 0
+        self.trend_pause_until = 0.0
     
-    def load_scenario(self, scenario):
+    def _validate_config(self, config: Dict[str, Any]):
+        """Validate required configuration fields."""
+        required_fields = ['api_key', 'api_secret', 'symbol', 'config_data']
+        
+        for field in required_fields:
+            if field not in config:
+                raise ValueError(f"Missing required config field: {field}")
+        
+        if config['api_key'] == 'YOUR_BINANCE_US_API_KEY':
+            raise ValueError("API key not configured - update config.json")
+        
+        if config['api_secret'] == 'YOUR_BINANCE_US_API_SECRET':
+            raise ValueError("API secret not configured - update config.json")
+    
+    def load_scenario(self, scenario: Dict[str, Any]):
         """Load selected scenario configuration."""
         self.scenario_name = scenario['name']
         self.grid_levels_count = scenario['grid_levels']
@@ -230,7 +326,7 @@ class SmartGridTradingBot:
         self.investment_percent = scenario['investment_percent']
         self.min_order_size_usdt = scenario['min_order_size_usdt']
         self.stop_loss_percent = scenario['stop_loss_percent']
-        self.take_profit_percent = scenario.get('take_profit_percent', None)
+        self.take_profit_percent = scenario.get('take_profit_percent')
         self.atr_period = scenario['atr_period']
         self.volatility_threshold = scenario['volatility_threshold']
         self.check_interval = scenario['check_interval_seconds']
@@ -238,7 +334,7 @@ class SmartGridTradingBot:
         # Validate grid spacing vs fees
         self._validate_grid_spacing()
         
-        logging.info(f"Loaded scenario: {self.scenario_name}")
+        logger.info(f"Loaded scenario: {self.scenario_name}")
     
     def _validate_grid_spacing(self):
         """Ensure grid spacing is profitable after fees."""
@@ -250,12 +346,12 @@ class SmartGridTradingBot:
         if self.grid_spacing_percent < min_spacing:
             old_spacing = self.grid_spacing_percent
             self.grid_spacing_percent = min_spacing
-            logging.warning(
+            logger.warning(
                 f"⚠️ Grid spacing {old_spacing}% is too tight for {self.fee_rate*100}% fees. "
                 f"Adjusted to {min_spacing:.2f}% minimum for profitability."
             )
     
-    def initialize_exchange(self):
+    def initialize_exchange(self) -> ccxt.binanceus:
         """Initialize connection to Binance.US."""
         try:
             exchange = ccxt.binanceus({
@@ -273,22 +369,19 @@ class SmartGridTradingBot:
                         trading_fees[self.symbol].get('maker', self.fee_rate),
                         trading_fees[self.symbol].get('taker', self.fee_rate)
                     )
-                    logging.info(f"Using exchange fee rate: {self.fee_rate*100:.3f}%")
+                    logger.info(f"Using exchange fee rate: {self.fee_rate*100:.3f}%")
             except Exception:
-                logging.info(f"Using default fee rate: {self.fee_rate*100:.3f}%")
+                logger.info(f"Using default fee rate: {self.fee_rate*100:.3f}%")
             
-            logging.info("Exchange connection established (Binance.US)")
+            logger.info("Exchange connection established (Binance.US)")
             return exchange
         except Exception as e:
-            logging.error(f"Failed to initialize exchange: {e}")
+            logger.error(f"Failed to initialize exchange: {e}")
             raise
     
     def initialize_tax_log(self):
         """Initialize CSV file for tax record keeping."""
         try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self.tax_log_file), exist_ok=True)
-            
             file_exists = os.path.isfile(self.tax_log_file)
             
             if not file_exists:
@@ -300,14 +393,15 @@ class SmartGridTradingBot:
                         'Net Proceeds (USD)', 'Cost Basis (USD)', 'Realized P&L (USD)',
                         'Order ID', 'Notes'
                     ])
-                logging.info(f"Created tax log file: {self.tax_log_file}")
+                logger.info(f"Created tax log file: {self.tax_log_file}")
             else:
-                logging.info(f"Using existing tax log file: {self.tax_log_file}")
+                logger.info(f"Using existing tax log file: {self.tax_log_file}")
         except Exception as e:
-            logging.error(f"Failed to initialize tax log: {e}")
+            logger.error(f"Failed to initialize tax log: {e}")
     
-    def log_tax_transaction(self, transaction_type, asset, amount, price, fee, 
-                           order_id, cost_basis=0, realized_pnl=0, notes=''):
+    def log_tax_transaction(self, transaction_type: str, asset: str, amount: float, 
+                           price: float, fee: float, order_id: str,
+                           cost_basis: float = 0, realized_pnl: float = 0, notes: str = ''):
         """Log a transaction for tax purposes with enhanced tracking."""
         try:
             total_value = amount * price
@@ -323,24 +417,24 @@ class SmartGridTradingBot:
                     order_id, notes
                 ])
             
-            logging.info(f"💰 Tax log: {transaction_type} {amount:.6f} {asset} @ ${price:.2f}")
+            logger.info(f"💰 Tax log: {transaction_type} {amount:.6f} {asset} @ ${price:.2f}")
         except Exception as e:
-            logging.error(f"Failed to log tax transaction: {e}")
+            logger.error(f"Failed to log tax transaction: {e}")
     
-    def get_balances(self):
+    def get_balances(self) -> Optional[Dict[str, Any]]:
         """Get USDT and crypto balances."""
         try:
             balance = self.exchange.fetch_balance()
             base_currency = self.symbol.split('/')[0]
             quote_currency = self.symbol.split('/')[1]
             
-            base_free = balance[base_currency]['free']
-            base_total = balance[base_currency]['total']
-            quote_free = balance[quote_currency]['free']
-            quote_total = balance[quote_currency]['total']
+            base_free = float(balance[base_currency]['free'] or 0)
+            base_total = float(balance[base_currency]['total'] or 0)
+            quote_free = float(balance[quote_currency]['free'] or 0)
+            quote_total = float(balance[quote_currency]['total'] or 0)
             
-            logging.info(f"Balances - {base_currency}: {base_free:.6f} (total: {base_total:.6f}), "
-                        f"{quote_currency}: {quote_free:.2f} (total: {quote_total:.2f})")
+            logger.info(f"Balances - {base_currency}: {base_free:.6f} (total: {base_total:.6f}), "
+                       f"{quote_currency}: {quote_free:.2f} (total: {quote_total:.2f})")
             
             return {
                 'base': base_free,
@@ -351,14 +445,17 @@ class SmartGridTradingBot:
                 'quote_currency': quote_currency
             }
         except Exception as e:
-            logging.error(f"Failed to fetch balance: {e}")
+            logger.error(f"Failed to fetch balance: {e}")
             return None
     
-    def check_exposure_limits(self, current_price):
+    def check_exposure_limits(self, current_price: float) -> Dict[str, Any]:
         """Check if we're within position limits."""
         balances = self.get_balances()
         if not balances:
             return {'within_limits': False, 'reason': 'Could not fetch balances'}
+        
+        if current_price <= 0:
+            return {'within_limits': False, 'reason': 'Invalid price'}
         
         crypto_value = balances['base_total'] * current_price
         total_value = crypto_value + balances['quote_total']
@@ -378,11 +475,11 @@ class SmartGridTradingBot:
             'total_value': total_value
         }
     
-    def check_trend_filter(self):
+    def check_trend_filter(self) -> bool:
         """Check if market is trending (grid trading performs poorly in trends)."""
         if time.time() < self.trend_pause_until:
             remaining = int(self.trend_pause_until - time.time())
-            logging.info(f"⏸️ Trend pause active, {remaining}s remaining")
+            logger.info(f"⏸️ Trend pause active, {remaining}s remaining")
             return False
         
         safety = self.market_analyzer.is_safe_to_trade()
@@ -391,21 +488,27 @@ class SmartGridTradingBot:
             # Pause trading for 30 minutes when strong trend detected
             self.trend_pause_until = time.time() + 1800
             for reason in safety['reasons']:
-                logging.warning(f"🚨 {reason}")
-            logging.warning(f"⏸️ Pausing grid trading for 30 minutes: {safety['recommendation']}")
+                logger.warning(f"🚨 {reason}")
+            logger.warning(f"⏸️ Pausing grid trading for 30 minutes: {safety['recommendation']}")
             return False
         
         if safety['warnings']:
             for warning in safety['warnings']:
-                logging.info(f"⚠️ {warning}")
+                logger.info(f"⚠️ {warning}")
         
         return True
     
-    def check_volatility(self):
+    def check_volatility(self) -> bool:
         """Check if market volatility is within acceptable range."""
         try:
             current_price = self.exchange.fetch_ticker(self.symbol)['last']
+            if not current_price or current_price <= 0:
+                return True
+            
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, '1h', limit=self.atr_period+1)
+            
+            if len(ohlcv) < self.atr_period:
+                return True
             
             highs = np.array([x[2] for x in ohlcv])
             lows = np.array([x[3] for x in ohlcv])
@@ -417,81 +520,94 @@ class SmartGridTradingBot:
             
             true_range = np.maximum(tr1, np.maximum(tr2, tr3))
             atr = np.mean(true_range)
-            volatility_percent = (atr / current_price) * 100
+            volatility_percent = (atr / current_price) * 100 if current_price > 0 else 0
             
-            logging.info(f"Current volatility (ATR): {volatility_percent:.2f}%")
+            logger.info(f"Current volatility (ATR): {volatility_percent:.2f}%")
             
             if volatility_percent > self.volatility_threshold:
-                logging.warning(f"High volatility ({volatility_percent:.2f}%), using wider grid")
+                logger.warning(f"High volatility ({volatility_percent:.2f}%), using wider grid")
                 return False
             
             return True
         except Exception as e:
-            logging.error(f"Failed to check volatility: {e}")
+            logger.error(f"Failed to check volatility: {e}")
             return True  # Continue trading if check fails
     
-    def calculate_compounded_investment(self):
+    def calculate_compounded_investment(self) -> float:
         """Calculate investment with MORE CONSERVATIVE compounding."""
         if self.initial_investment <= 0:
             return self.investment_percent
         
-        current_price = self.exchange.fetch_ticker(self.symbol)['last']
-        position_summary = self.position_tracker.get_summary(current_price)
-        total_pnl = position_summary['total_pnl']
-        profit_percent = (total_pnl / self.initial_investment) * 100
-        
-        # More conservative compounding tiers
-        if profit_percent > 30:
-            compound_percent = min(85, self.investment_percent + 8)
-        elif profit_percent > 20:
-            compound_percent = min(82, self.investment_percent + 6)
-        elif profit_percent > 10:
-            compound_percent = min(80, self.investment_percent + 4)
-        elif profit_percent > 5:
-            compound_percent = min(78, self.investment_percent + 2)
-        elif profit_percent < -10:
-            # REDUCE exposure when losing
-            compound_percent = max(50, self.investment_percent - 10)
-            logging.warning(f"📉 Reducing exposure due to {profit_percent:.1f}% loss")
-        elif profit_percent < -5:
-            compound_percent = max(60, self.investment_percent - 5)
-        else:
-            compound_percent = self.investment_percent
-        
-        if compound_percent != self.investment_percent:
-            logging.info(f"💎 Investment adjusted to {compound_percent}% (P&L: {profit_percent:.1f}%)")
-        
-        return compound_percent
+        try:
+            current_price = self.exchange.fetch_ticker(self.symbol)['last']
+            if not current_price or current_price <= 0:
+                return self.investment_percent
+            
+            position_summary = self.position_tracker.get_summary(current_price)
+            total_pnl = position_summary['total_pnl']
+            profit_percent = (total_pnl / self.initial_investment) * 100 if self.initial_investment > 0 else 0
+            
+            # More conservative compounding tiers
+            if profit_percent > 30:
+                compound_percent = min(85, self.investment_percent + 8)
+            elif profit_percent > 20:
+                compound_percent = min(82, self.investment_percent + 6)
+            elif profit_percent > 10:
+                compound_percent = min(80, self.investment_percent + 4)
+            elif profit_percent > 5:
+                compound_percent = min(78, self.investment_percent + 2)
+            elif profit_percent < -10:
+                # REDUCE exposure when losing
+                compound_percent = max(50, self.investment_percent - 10)
+                logger.warning(f"📉 Reducing exposure due to {profit_percent:.1f}% loss")
+            elif profit_percent < -5:
+                compound_percent = max(60, self.investment_percent - 5)
+            else:
+                compound_percent = self.investment_percent
+            
+            if compound_percent != self.investment_percent:
+                logger.info(f"💎 Investment adjusted to {compound_percent}% (P&L: {profit_percent:.1f}%)")
+            
+            return compound_percent
+        except Exception as e:
+            logger.error(f"Error calculating compounded investment: {e}")
+            return self.investment_percent
     
-    def should_reposition_grid(self, current_price):
+    def should_reposition_grid(self, current_price: float) -> bool:
         """Check if grid needs repositioning."""
-        if self.grid_center_price is None:
+        if self.grid_center_price is None or current_price <= 0:
+            return False
+        
+        if self.grid_center_price <= 0:
             return False
         
         price_move_percent = abs((current_price - self.grid_center_price) / self.grid_center_price) * 100
-        reposition_threshold = self.grid_spacing_percent * 2.5  # Slightly more tolerant
+        reposition_threshold = self.grid_spacing_percent * 2.5
         
         time_since_update = time.time() - self.last_grid_update
-        min_time_between_updates = 600  # 10 minutes (increased from 5)
+        min_time_between_updates = 600  # 10 minutes
         
         if price_move_percent > reposition_threshold and time_since_update > min_time_between_updates:
-            logging.info(f"🔄 Grid repositioning needed: price moved {price_move_percent:.2f}%")
+            logger.info(f"🔄 Grid repositioning needed: price moved {price_move_percent:.2f}%")
             return True
         
         return False
     
-    def calculate_grid_levels(self, reposition=False):
+    def calculate_grid_levels(self, reposition: bool = False) -> bool:
         """Calculate grid levels with exposure limits and fee-awareness."""
         try:
             current_price = self.exchange.fetch_ticker(self.symbol)['last']
-            balances = self.get_balances()
+            if not current_price or current_price <= 0:
+                logger.error("Invalid current price")
+                return False
             
+            balances = self.get_balances()
             if not balances:
                 return False
             
             # Check trend filter
             if not self.check_trend_filter():
-                logging.info("Skipping grid calculation due to trend filter")
+                logger.info("Skipping grid calculation due to trend filter")
                 return True  # Not a failure, just waiting
             
             # Get market bias
@@ -507,7 +623,7 @@ class SmartGridTradingBot:
             # Check exposure limits
             exposure = self.check_exposure_limits(current_price)
             if exposure.get('should_reduce'):
-                logging.warning(f"⚠️ Exposure too high ({exposure['current_exposure']:.1f}%), reducing buys")
+                logger.warning(f"⚠️ Exposure too high ({exposure['current_exposure']:.1f}%), reducing buys")
                 bias['buy_weight'] *= 0.5
                 bias['sell_weight'] = 1 - bias['buy_weight']
             
@@ -517,7 +633,7 @@ class SmartGridTradingBot:
             
             # Cancel existing orders if repositioning
             if reposition:
-                logging.info("🔄 Repositioning grid - cancelling unfilled orders")
+                logger.info("🔄 Repositioning grid - cancelling unfilled orders")
                 self.cancel_all_orders()
             
             self.grid_levels = []
@@ -529,8 +645,8 @@ class SmartGridTradingBot:
             buy_levels = max(1, int(total_levels * bias['buy_weight']))
             sell_levels = max(1, int(total_levels * bias['sell_weight']))
             
-            logging.info(f"📊 Grid bias: {bias['bias']} (Buy: {buy_levels}, Sell: {sell_levels}, "
-                        f"Confidence: {bias.get('confidence', 'N/A')})")
+            logger.info(f"📊 Grid bias: {bias['bias']} (Buy: {buy_levels}, Sell: {sell_levels}, "
+                       f"Confidence: {bias.get('confidence', 'N/A')})")
             
             # Calculate order sizes with limits
             max_single_usdt = self.initial_investment * (self.max_single_order_percent / 100)
@@ -541,10 +657,13 @@ class SmartGridTradingBot:
                 price_level = current_price * (1 - (i * self.grid_spacing_percent / 100))
                 
                 # Adjust to S/R
-                if sr_levels and sr_levels['support']:
+                if sr_levels and sr_levels.get('support'):
                     price_level = self._adjust_to_sr_level(price_level, sr_levels['support'], 'support')
                 
                 if usdt_per_buy < self.min_order_size_usdt:
+                    continue
+                
+                if price_level <= 0:
                     continue
                 
                 quantity = usdt_per_buy / price_level
@@ -568,7 +687,7 @@ class SmartGridTradingBot:
             for i in range(1, sell_levels + 1):
                 price_level = current_price * (1 + (i * self.grid_spacing_percent / 100))
                 
-                if sr_levels and sr_levels['resistance']:
+                if sr_levels and sr_levels.get('resistance'):
                     price_level = self._adjust_to_sr_level(price_level, sr_levels['resistance'], 'resistance')
                 
                 if crypto_per_sell > 0:
@@ -580,20 +699,23 @@ class SmartGridTradingBot:
                         'order_id': None
                     })
             
-            logging.info(f"Generated {len(self.grid_levels)} grid levels around ${current_price:.2f}")
+            logger.info(f"Generated {len(self.grid_levels)} grid levels around ${current_price:.2f}")
             return True
             
         except Exception as e:
-            logging.error(f"Failed to calculate grid levels: {e}")
+            logger.error(f"Failed to calculate grid levels: {e}")
             return False
     
-    def _adjust_to_sr_level(self, target_price, sr_levels, level_type):
+    def _adjust_to_sr_level(self, target_price: float, sr_levels: List[float], level_type: str) -> float:
         """Adjust order to nearby S/R level."""
+        if not sr_levels or target_price <= 0:
+            return target_price
+        
         threshold = target_price * 0.004  # 0.4% threshold
         
         for sr_price in sr_levels[:3]:  # Only check closest 3
-            if abs(sr_price - target_price) < threshold:
-                logging.debug(f"📍 Adjusted {level_type}: ${target_price:.2f} → ${sr_price:.2f}")
+            if sr_price > 0 and abs(sr_price - target_price) < threshold:
+                logger.debug(f"📍 Adjusted {level_type}: ${target_price:.2f} → ${sr_price:.2f}")
                 return sr_price
         
         return target_price
@@ -601,7 +723,7 @@ class SmartGridTradingBot:
     def place_grid_orders(self):
         """Place limit orders at grid levels."""
         if not self.check_volatility():
-            logging.info("Volatility outside range, adjusting...")
+            logger.info("Volatility outside range, adjusting...")
         
         try:
             for level in self.grid_levels:
@@ -609,6 +731,9 @@ class SmartGridTradingBot:
                     continue
                 
                 price = level['price']
+                if price <= 0:
+                    continue
+                
                 quantity = self.exchange.amount_to_precision(self.symbol, level['quantity'])
                 quantity = float(quantity)
                 
@@ -630,16 +755,16 @@ class SmartGridTradingBot:
                     
                     level['order_id'] = order['id']
                     self.active_orders[order['id']] = {'level': level, 'order': order}
-                    logging.info(f"✓ Placed {level['type'].upper()}: {quantity:.6f} @ ${price:.2f}")
+                    logger.info(f"✓ Placed {level['type'].upper()}: {quantity:.6f} @ ${price:.2f}")
                     
                 except ccxt.InsufficientFunds as e:
-                    logging.warning(f"Insufficient funds for {level['type']} @ ${price}: {e}")
+                    logger.warning(f"Insufficient funds for {level['type']} @ ${price}: {e}")
                     break
                 except Exception as e:
-                    logging.warning(f"Could not place {level['type']} @ ${price}: {e}")
+                    logger.warning(f"Could not place {level['type']} @ ${price}: {e}")
         
         except Exception as e:
-            logging.error(f"Failed to place grid orders: {e}")
+            logger.error(f"Failed to place grid orders: {e}")
     
     def check_orders(self):
         """Check order status with partial fill handling."""
@@ -656,26 +781,31 @@ class SmartGridTradingBot:
                         level = self.active_orders[order_id]['level']
                         level['order_id'] = None
                         del self.active_orders[order_id]
-                        logging.info(f"Order {order_id} was cancelled externally")
+                        logger.info(f"Order {order_id} was cancelled externally")
                     
                     # Handle partial fills
-                    elif status == 'open' and order_info['filled'] > 0:
+                    elif status == 'open' and order_info.get('filled', 0) > 0:
                         self._handle_partial_fill(order_id, order_info)
                 
                 except Exception as e:
-                    logging.warning(f"Error checking order {order_id}: {e}")
+                    logger.warning(f"Error checking order {order_id}: {e}")
         
         except Exception as e:
-            logging.error(f"Failed to check orders: {e}")
+            logger.error(f"Failed to check orders: {e}")
     
-    def _handle_filled_order(self, order_id, order_info):
+    def _handle_filled_order(self, order_id: str, order_info: Dict[str, Any]):
         """Handle a completely filled order."""
         level = self.active_orders[order_id]['level']
         level['filled'] = True
         
         side = order_info['side']
-        amount = order_info['filled']
-        price = float(order_info['average']) if order_info['average'] else float(order_info['price'])
+        amount = float(order_info.get('filled', 0))
+        price = float(order_info.get('average') or order_info.get('price', 0))
+        
+        if amount <= 0 or price <= 0:
+            logger.warning(f"Invalid fill data: amount={amount}, price={price}")
+            del self.active_orders[order_id]
+            return
         
         # Calculate fee
         fee = self._calculate_fee(order_info, amount, price)
@@ -695,8 +825,8 @@ class SmartGridTradingBot:
             result = self.position_tracker.close_position(amount, price, fee)
             self.cycles_completed += 1
             
-            logging.info(f"💰 Cycle #{self.cycles_completed} P&L: ${result['pnl']:.2f} "
-                        f"(Cost: ${result['cost_basis']:.2f}, Proceeds: ${result['proceeds']:.2f})")
+            logger.info(f"💰 Cycle #{self.cycles_completed} P&L: ${result['pnl']:.2f} "
+                       f"(Cost: ${result['cost_basis']:.2f}, Proceeds: ${result['proceeds']:.2f})")
             
             self.log_tax_transaction(
                 'SELL', base_currency, amount, price, fee, order_id,
@@ -704,17 +834,20 @@ class SmartGridTradingBot:
                 notes='Grid sell order filled'
             )
         
-        logging.info(f"✓ FILLED: {side.upper()} {amount:.6f} @ ${price:.2f}")
+        logger.info(f"✓ FILLED: {side.upper()} {amount:.6f} @ ${price:.2f}")
         
         del self.active_orders[order_id]
         self.place_opposite_order(level, price, amount)
     
-    def _handle_partial_fill(self, order_id, order_info):
+    def _handle_partial_fill(self, order_id: str, order_info: Dict[str, Any]):
         """Handle partially filled orders."""
-        filled = order_info['filled']
-        remaining = order_info['remaining']
-        price = float(order_info['average']) if order_info['average'] else float(order_info['price'])
+        filled = float(order_info.get('filled', 0))
+        remaining = float(order_info.get('remaining', 0))
+        price = float(order_info.get('average') or order_info.get('price', 0))
         side = order_info['side']
+        
+        if price <= 0:
+            return
         
         # Track the filled portion
         level = self.active_orders[order_id]['level']
@@ -732,12 +865,12 @@ class SmartGridTradingBot:
             # For sells, we'll handle full position closure when order completes
             
             self.active_orders[order_id]['tracked_filled'] = filled
-            logging.info(f"📊 Partial fill: {side.upper()} {new_fill:.6f} @ ${price:.2f} "
-                        f"(remaining: {remaining:.6f})")
+            logger.info(f"📊 Partial fill: {side.upper()} {new_fill:.6f} @ ${price:.2f} "
+                       f"(remaining: {remaining:.6f})")
     
-    def _calculate_fee(self, order_info, amount, price):
+    def _calculate_fee(self, order_info: Dict[str, Any], amount: float, price: float) -> float:
         """Calculate trading fee from order info."""
-        fee = 0
+        fee = 0.0
         if 'fee' in order_info and order_info['fee']:
             fee_info = order_info['fee']
             if fee_info.get('cost'):
@@ -746,14 +879,17 @@ class SmartGridTradingBot:
                 else:
                     fee = float(fee_info['cost']) * price
         
-        if fee == 0:
+        if fee == 0 and amount > 0 and price > 0:
             fee = (amount * price) * self.fee_rate
         
         return fee
     
-    def place_opposite_order(self, filled_level, fill_price, filled_quantity):
+    def place_opposite_order(self, filled_level: Dict, fill_price: float, filled_quantity: float):
         """Place opposite order after a grid level fills."""
         try:
+            if fill_price <= 0 or filled_quantity <= 0:
+                return
+            
             price_adjustment = self.grid_spacing_percent / 100
             
             if filled_level['type'] == 'buy':
@@ -765,7 +901,10 @@ class SmartGridTradingBot:
                 side = 'buy'
                 # Use proceeds to buy back
                 proceeds = filled_quantity * fill_price
-                quantity = proceeds / new_price
+                quantity = proceeds / new_price if new_price > 0 else 0
+            
+            if quantity <= 0 or new_price <= 0:
+                return
             
             quantity = self.exchange.amount_to_precision(self.symbol, quantity)
             quantity = float(quantity)
@@ -789,18 +928,18 @@ class SmartGridTradingBot:
                 'type': side,
                 'filled': False,
                 'order_id': order['id'],
-                'linked_to': filled_level['price']  # Track linkage
+                'linked_to': filled_level['price']
             }
             
             self.grid_levels.append(new_level)
             self.active_orders[order['id']] = {'level': new_level, 'order': order}
             
-            logging.info(f"✓ Placed opposite {side.upper()}: {quantity:.6f} @ ${new_price:.2f}")
+            logger.info(f"✓ Placed opposite {side.upper()}: {quantity:.6f} @ ${new_price:.2f}")
         
         except Exception as e:
-            logging.error(f"Failed to place opposite order: {e}")
+            logger.error(f"Failed to place opposite order: {e}")
     
-    def calculate_current_value(self):
+    def calculate_current_value(self) -> Optional[Dict[str, Any]]:
         """Calculate portfolio value with proper P&L tracking."""
         try:
             balances = self.get_balances()
@@ -808,19 +947,23 @@ class SmartGridTradingBot:
                 return None
             
             current_price = self.exchange.fetch_ticker(self.symbol)['last']
+            if not current_price or current_price <= 0:
+                return None
             
             # Get position summary
             position = self.position_tracker.get_summary(current_price)
             
             # Calculate total value including open orders
-            open_orders_value = 0
+            open_orders_value = 0.0
             try:
                 open_orders = self.exchange.fetch_open_orders(self.symbol)
                 for order in open_orders:
+                    order_price = float(order.get('price', 0))
+                    order_remaining = float(order.get('remaining', 0))
                     if order['side'] == 'buy':
-                        open_orders_value += float(order['remaining']) * float(order['price'])
+                        open_orders_value += order_remaining * order_price
                     else:
-                        open_orders_value += float(order['remaining']) * current_price
+                        open_orders_value += order_remaining * current_price
             except Exception:
                 pass
             
@@ -839,7 +982,7 @@ class SmartGridTradingBot:
                 total_pnl = total_value - self.initial_investment
                 pnl_percent = (total_pnl / self.initial_investment) * 100
                 
-                logging.info(
+                logger.info(
                     f"📊 Portfolio: ${total_value:.2f} | "
                     f"P&L: ${total_pnl:.2f} ({pnl_percent:+.2f}%) | "
                     f"Realized: ${position['realized_pnl']:.2f} | "
@@ -859,23 +1002,23 @@ class SmartGridTradingBot:
             
             return None
         except Exception as e:
-            logging.error(f"Failed to calculate portfolio value: {e}")
+            logger.error(f"Failed to calculate portfolio value: {e}")
             return None
     
-    def check_stop_loss(self):
+    def check_stop_loss(self) -> bool:
         """Check stop loss with proper drawdown tracking."""
         portfolio = self.calculate_current_value()
         
         if portfolio:
             # Check percentage loss
             if portfolio['profit_percent'] < -self.stop_loss_percent:
-                logging.critical(f"⚠️ STOP LOSS: {portfolio['profit_percent']:.2f}% loss")
+                logger.critical(f"⚠️ STOP LOSS: {portfolio['profit_percent']:.2f}% loss")
                 self.emergency_stop()
                 return False
             
             # Check drawdown
             if self.max_drawdown > self.stop_loss_percent * 1.5:
-                logging.critical(f"⚠️ DRAWDOWN STOP: {self.max_drawdown:.2f}% drawdown")
+                logger.critical(f"⚠️ DRAWDOWN STOP: {self.max_drawdown:.2f}% drawdown")
                 self.emergency_stop()
                 return False
         
@@ -884,16 +1027,16 @@ class SmartGridTradingBot:
     def emergency_stop(self):
         """Emergency stop with full reporting."""
         try:
-            logging.critical("🛑 EMERGENCY STOP ACTIVATED")
+            logger.critical("🛑 EMERGENCY STOP ACTIVATED")
             
             # Cancel all orders
             try:
                 open_orders = self.exchange.fetch_open_orders(self.symbol)
                 for order in open_orders:
                     self.exchange.cancel_order(order['id'], self.symbol)
-                    logging.info(f"Cancelled: {order['id']}")
+                    logger.info(f"Cancelled: {order['id']}")
             except Exception as e:
-                logging.error(f"Error cancelling orders: {e}")
+                logger.error(f"Error cancelling orders: {e}")
             
             self.active_orders = {}
             
@@ -911,49 +1054,53 @@ class SmartGridTradingBot:
                         )
                         
                         current_price = self.exchange.fetch_ticker(self.symbol)['last']
-                        fee = float(quantity) * current_price * self.fee_rate
-                        
-                        result = self.position_tracker.close_position(float(quantity), current_price, fee)
-                        
-                        self.log_tax_transaction(
-                            'SELL', balances['base_currency'], float(quantity),
-                            current_price, fee, order['id'],
-                            cost_basis=result['cost_basis'], realized_pnl=result['pnl'],
-                            notes='Emergency stop - market sell'
-                        )
-                        
-                        logging.critical(f"Emergency sold {quantity} @ ${current_price:.2f}")
+                        if current_price and current_price > 0:
+                            fee = float(quantity) * current_price * self.fee_rate
+                            
+                            result = self.position_tracker.close_position(float(quantity), current_price, fee)
+                            
+                            self.log_tax_transaction(
+                                'SELL', balances['base_currency'], float(quantity),
+                                current_price, fee, order['id'],
+                                cost_basis=result['cost_basis'], realized_pnl=result['pnl'],
+                                notes='Emergency stop - market sell'
+                            )
+                            
+                            logger.critical(f"Emergency sold {quantity} @ ${current_price:.2f}")
                 except Exception as e:
-                    logging.error(f"Error in emergency sell: {e}")
+                    logger.error(f"Error in emergency sell: {e}")
             
             # Final summary
             self._print_final_summary()
             
         except Exception as e:
-            logging.error(f"Error during emergency stop: {e}")
+            logger.error(f"Error during emergency stop: {e}")
     
     def _print_final_summary(self):
         """Print final trading session summary."""
         try:
             current_price = self.exchange.fetch_ticker(self.symbol)['last']
+            if not current_price or current_price <= 0:
+                current_price = 0.0
+            
             position = self.position_tracker.get_summary(current_price)
             
             runtime = datetime.now() - self.start_time if self.start_time else None
             
-            logging.info("=" * 60)
-            logging.info("TRADING SESSION SUMMARY")
-            logging.info("=" * 60)
-            logging.info(f"Strategy: {self.scenario_name}")
+            logger.info("=" * 60)
+            logger.info("TRADING SESSION SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"Strategy: {self.scenario_name}")
             if runtime:
-                logging.info(f"Runtime: {runtime}")
-            logging.info(f"Cycles completed: {self.cycles_completed}")
-            logging.info(f"Initial investment: ${self.initial_investment:.2f}")
-            logging.info(f"Realized P&L: ${position['realized_pnl']:.2f}")
-            logging.info(f"Total fees paid: ${position['total_fees']:.2f}")
-            logging.info(f"Max drawdown: {self.max_drawdown:.2f}%")
-            logging.info("=" * 60)
+                logger.info(f"Runtime: {runtime}")
+            logger.info(f"Cycles completed: {self.cycles_completed}")
+            logger.info(f"Initial investment: ${self.initial_investment:.2f}")
+            logger.info(f"Realized P&L: ${position['realized_pnl']:.2f}")
+            logger.info(f"Total fees paid: ${position['total_fees']:.2f}")
+            logger.info(f"Max drawdown: {self.max_drawdown:.2f}%")
+            logger.info("=" * 60)
         except Exception as e:
-            logging.error(f"Error printing summary: {e}")
+            logger.error(f"Error printing summary: {e}")
     
     def cancel_all_orders(self):
         """Cancel all active orders."""
@@ -963,7 +1110,7 @@ class SmartGridTradingBot:
                 try:
                     self.exchange.cancel_order(order['id'], self.symbol)
                 except Exception as e:
-                    logging.warning(f"Could not cancel {order['id']}: {e}")
+                    logger.warning(f"Could not cancel {order['id']}: {e}")
             
             # Clear tracked orders
             for order_id in list(self.active_orders.keys()):
@@ -971,34 +1118,43 @@ class SmartGridTradingBot:
                 level['order_id'] = None
             
             self.active_orders = {}
-            logging.info("All orders cancelled")
+            logger.info("All orders cancelled")
         except Exception as e:
-            logging.error(f"Failed to cancel orders: {e}")
+            logger.error(f"Failed to cancel orders: {e}")
     
     def run(self):
         """Main bot loop."""
-        logging.info(f"🤖 Starting Smart Grid Trading Bot v14 - {self.scenario_name}")
-        logging.info(f"📊 Grid: {self.grid_levels_count} levels @ {self.grid_spacing_percent}% spacing")
-        logging.info(f"💰 Fee rate: {self.fee_rate*100:.3f}%")
+        logger.info(f"🤖 Starting Smart Grid Trading Bot v14.1 - {self.scenario_name}")
+        logger.info(f"📊 Grid: {self.grid_levels_count} levels @ {self.grid_spacing_percent}% spacing")
+        logger.info(f"💰 Fee rate: {self.fee_rate*100:.3f}%")
         
         balances = self.get_balances()
         if balances:
-            logging.info(f"Starting: {balances['quote']:.2f} {balances['quote_currency']}, "
-                        f"{balances['base']:.6f} {balances['base_currency']}")
+            logger.info(f"Starting: {balances['quote']:.2f} {balances['quote_currency']}, "
+                       f"{balances['base']:.6f} {balances['base_currency']}")
         
         if not self.calculate_grid_levels():
-            logging.error("Failed to calculate grid levels")
+            logger.error("Failed to calculate grid levels")
             return
         
         try:
             while True:
-                logging.info("--- 🔄 Cycle start ---")
+                logger.info("--- 🔄 Cycle start ---")
                 
-                current_price = self.exchange.fetch_ticker(self.symbol)['last']
+                try:
+                    current_price = self.exchange.fetch_ticker(self.symbol)['last']
+                    if not current_price or current_price <= 0:
+                        logger.warning("Could not fetch current price, retrying...")
+                        time.sleep(self.check_interval)
+                        continue
+                except Exception as e:
+                    logger.error(f"Error fetching price: {e}")
+                    time.sleep(self.check_interval)
+                    continue
                 
                 # Check trend filter
                 if not self.check_trend_filter():
-                    logging.info(f"💤 Waiting for trend to weaken... ({self.check_interval}s)")
+                    logger.info(f"💤 Waiting for trend to weaken... ({self.check_interval}s)")
                     time.sleep(self.check_interval)
                     continue
                 
@@ -1017,13 +1173,15 @@ class SmartGridTradingBot:
                 # Status update
                 self.calculate_current_value()
                 
-                logging.info(f"💤 Sleeping {self.check_interval}s\n")
+                logger.info(f"💤 Sleeping {self.check_interval}s\n")
                 time.sleep(self.check_interval)
         
         except KeyboardInterrupt:
-            logging.info("🛑 Stopped by user")
+            logger.info("🛑 Stopped by user")
             self.cancel_all_orders()
             self._print_final_summary()
         except Exception as e:
-            logging.error(f"❌ Unexpected error: {e}")
+            logger.error(f"❌ Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
             self.emergency_stop()

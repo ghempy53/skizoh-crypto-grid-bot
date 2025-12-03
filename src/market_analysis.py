@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module
+# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v14.1
 # =============================================================================
 # Enhanced with:
 # - Wilder's RSI (proper smoothing)
@@ -37,16 +37,22 @@
 # - ADX trend strength filter
 # - Volume-weighted support/resistance
 # - Bollinger Bands for volatility
+# - Fixed potential index out of bounds errors
+# - Better null checking and error handling
 # =============================================================================
 
 import numpy as np
 import logging
 from collections import defaultdict
+from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
+
 
 class MarketAnalyzer:
     """Advanced market analysis for smart trading decisions."""
     
-    def __init__(self, exchange, symbol):
+    def __init__(self, exchange, symbol: str):
         """Initialize market analyzer.
         
         Args:
@@ -55,11 +61,11 @@ class MarketAnalyzer:
         """
         self.exchange = exchange
         self.symbol = symbol
-        self._cache = {}
+        self._cache: Dict[str, Any] = {}
         self._cache_ttl = 60  # Cache results for 60 seconds
         self._last_fetch = 0
     
-    def calculate_rsi_wilder(self, period=14, timeframe='1h'):
+    def calculate_rsi_wilder(self, period: int = 14, timeframe: str = '1h') -> Optional[float]:
         """Calculate RSI using Wilder's Smoothed Moving Average (correct method).
         
         Wilder's smoothing uses: α = 1/period (not 2/(period+1) like standard EMA)
@@ -75,21 +81,22 @@ class MarketAnalyzer:
         try:
             # Need more data for proper Wilder smoothing initialization
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, limit=period * 3)
-            closes = np.array([x[4] for x in ohlcv])
             
-            if len(closes) < period + 1:
-                logging.warning("Insufficient data for RSI calculation")
+            if not ohlcv or len(ohlcv) < period + 1:
+                logger.warning("Insufficient data for RSI calculation")
                 return None
+            
+            closes = np.array([x[4] for x in ohlcv])
             
             # Calculate price changes
             deltas = np.diff(closes)
             
+            if len(deltas) < period:
+                return None
+            
             # Separate gains and losses
             gains = np.where(deltas > 0, deltas, 0)
             losses = np.where(deltas < 0, -deltas, 0)
-            
-            # Wilder's smoothing factor
-            alpha = 1.0 / period
             
             # Initialize with SMA for first value
             avg_gain = np.mean(gains[:period])
@@ -109,18 +116,18 @@ class MarketAnalyzer:
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
             
-            return rsi
+            return float(rsi)
             
         except Exception as e:
-            logging.error(f"Failed to calculate RSI: {e}")
+            logger.error(f"Failed to calculate RSI: {e}")
             return None
     
     # Alias for backward compatibility
-    def calculate_rsi(self, period=14, timeframe='1h'):
+    def calculate_rsi(self, period: int = 14, timeframe: str = '1h') -> Optional[float]:
         """Alias for calculate_rsi_wilder for backward compatibility."""
         return self.calculate_rsi_wilder(period, timeframe)
     
-    def calculate_adx(self, period=14, timeframe='1h'):
+    def calculate_adx(self, period: int = 14, timeframe: str = '1h') -> Optional[Dict[str, Any]]:
         """Calculate Average Directional Index (ADX) for trend strength.
         
         ADX measures trend strength regardless of direction:
@@ -141,6 +148,9 @@ class MarketAnalyzer:
             limit = period * 3 + 10
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, limit=limit)
             
+            if not ohlcv or len(ohlcv) < period * 2:
+                return None
+            
             highs = np.array([x[2] for x in ohlcv])
             lows = np.array([x[3] for x in ohlcv])
             closes = np.array([x[4] for x in ohlcv])
@@ -159,7 +169,9 @@ class MarketAnalyzer:
             minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
             
             # Wilder's smoothing for TR, +DM, -DM
-            def wilder_smooth(data, period):
+            def wilder_smooth(data: np.ndarray, period: int) -> np.ndarray:
+                if len(data) < period:
+                    return np.zeros(len(data))
                 smoothed = np.zeros(len(data))
                 smoothed[period-1] = np.sum(data[:period])
                 for i in range(period, len(data)):
@@ -180,23 +192,27 @@ class MarketAnalyzer:
             dx = 100 * di_diff / np.where(di_sum > 0, di_sum, 1)
             
             # Calculate ADX (smoothed DX)
+            if len(dx) <= period:
+                return None
+            
             adx = wilder_smooth(dx[period:], period)
             
             if len(adx) == 0:
                 return None
             
             return {
-                'adx': adx[-1],
-                'plus_di': plus_di[-1],
-                'minus_di': minus_di[-1],
+                'adx': float(adx[-1]),
+                'plus_di': float(plus_di[-1]),
+                'minus_di': float(minus_di[-1]),
                 'trend_direction': 'UP' if plus_di[-1] > minus_di[-1] else 'DOWN'
             }
             
         except Exception as e:
-            logging.error(f"Failed to calculate ADX: {e}")
+            logger.error(f"Failed to calculate ADX: {e}")
             return None
     
-    def calculate_macd(self, fast=12, slow=26, signal=9, timeframe='1h'):
+    def calculate_macd(self, fast: int = 12, slow: int = 26, signal: int = 9, 
+                       timeframe: str = '1h') -> Optional[Dict[str, Any]]:
         """Calculate MACD (Moving Average Convergence Divergence).
         
         Args:
@@ -211,32 +227,54 @@ class MarketAnalyzer:
         try:
             limit = slow + signal + 50  # Extra buffer for EMA stabilization
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, limit=limit)
+            
+            if not ohlcv or len(ohlcv) < slow + signal:
+                return None
+            
             closes = np.array([x[4] for x in ohlcv])
             
             ema_fast = self._calculate_ema(closes, fast)
             ema_slow = self._calculate_ema(closes, slow)
             
             macd_line = ema_fast - ema_slow
+            
+            # Ensure we have enough data for signal line
+            if len(macd_line) <= slow - 1 + signal:
+                return None
+            
             signal_line = self._calculate_ema(macd_line[slow-1:], signal)
+            
+            if len(signal_line) < 2:
+                return None
             
             # Align arrays
             macd_val = macd_line[-1]
             signal_val = signal_line[-1]
             histogram = macd_val - signal_val
             
+            # Calculate histogram increasing (with bounds checking)
+            histogram_increasing = False
+            if len(signal_line) >= 2 and len(macd_line) >= 2:
+                current_hist = macd_line[-1] - signal_line[-1]
+                prev_hist = macd_line[-2] - signal_line[-2]
+                histogram_increasing = current_hist > prev_hist
+            
             return {
-                'macd': macd_val,
-                'signal': signal_val,
-                'histogram': histogram,
-                'histogram_increasing': len(signal_line) > 1 and (macd_line[-1] - signal_line[-1]) > (macd_line[-2] - signal_line[-2])
+                'macd': float(macd_val),
+                'signal': float(signal_val),
+                'histogram': float(histogram),
+                'histogram_increasing': histogram_increasing
             }
             
         except Exception as e:
-            logging.error(f"Failed to calculate MACD: {e}")
+            logger.error(f"Failed to calculate MACD: {e}")
             return None
     
-    def _calculate_ema(self, data, period):
+    def _calculate_ema(self, data: np.ndarray, period: int) -> np.ndarray:
         """Calculate Exponential Moving Average."""
+        if len(data) < period:
+            return np.zeros(len(data))
+        
         ema = np.zeros(len(data))
         multiplier = 2 / (period + 1)
         
@@ -248,7 +286,8 @@ class MarketAnalyzer:
         
         return ema
     
-    def calculate_bollinger_bands(self, period=20, std_dev=2, timeframe='1h'):
+    def calculate_bollinger_bands(self, period: int = 20, std_dev: float = 2, 
+                                  timeframe: str = '1h') -> Optional[Dict[str, Any]]:
         """Calculate Bollinger Bands for volatility assessment.
         
         Args:
@@ -261,6 +300,10 @@ class MarketAnalyzer:
         """
         try:
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, limit=period + 10)
+            
+            if not ohlcv or len(ohlcv) < period:
+                return None
+            
             closes = np.array([x[4] for x in ohlcv])
             
             sma = np.mean(closes[-period:])
@@ -270,26 +313,28 @@ class MarketAnalyzer:
             lower = sma - (std_dev * std)
             
             # Band width as percentage of price (measure of volatility)
-            width_percent = ((upper - lower) / sma) * 100
+            width_percent = ((upper - lower) / sma) * 100 if sma > 0 else 0
             
             # Current price position within bands (0 = lower, 1 = upper)
             current_price = closes[-1]
-            position = (current_price - lower) / (upper - lower) if (upper - lower) > 0 else 0.5
+            band_range = upper - lower
+            position = (current_price - lower) / band_range if band_range > 0 else 0.5
             
             return {
-                'upper': upper,
-                'middle': sma,
-                'lower': lower,
-                'width_percent': width_percent,
-                'price_position': position,
-                'current_price': current_price
+                'upper': float(upper),
+                'middle': float(sma),
+                'lower': float(lower),
+                'width_percent': float(width_percent),
+                'price_position': float(position),
+                'current_price': float(current_price)
             }
             
         except Exception as e:
-            logging.error(f"Failed to calculate Bollinger Bands: {e}")
+            logger.error(f"Failed to calculate Bollinger Bands: {e}")
             return None
     
-    def find_support_resistance(self, lookback_hours=168, num_levels=5):
+    def find_support_resistance(self, lookback_hours: int = 168, 
+                                num_levels: int = 5) -> Optional[Dict[str, Any]]:
         """Find support and resistance levels with volume weighting.
         
         Enhanced method:
@@ -307,31 +352,41 @@ class MarketAnalyzer:
         try:
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, '1h', limit=lookback_hours)
             
+            if not ohlcv or len(ohlcv) < 10:
+                return None
+            
             highs = np.array([x[2] for x in ohlcv])
             lows = np.array([x[3] for x in ohlcv])
             closes = np.array([x[4] for x in ohlcv])
             volumes = np.array([x[5] for x in ohlcv])
             
             current_price = closes[-1]
+            if current_price <= 0:
+                return None
             
             # Adaptive step size based on price
             price_step = max(1, current_price * 0.002)  # 0.2% clusters
             
             # Create weighted price clusters
-            price_clusters = defaultdict(lambda: {'count': 0, 'volume': 0, 'recency_score': 0})
+            price_clusters: Dict[float, Dict[str, float]] = defaultdict(
+                lambda: {'count': 0, 'volume': 0.0, 'recency_score': 0.0}
+            )
             
+            num_bars = len(highs)
             for i, (high, low, close, volume) in enumerate(zip(highs, lows, closes, volumes)):
                 # Recency weight: more recent = higher weight
-                recency = (i + 1) / len(highs)
+                recency = (i + 1) / num_bars
                 
                 for price in [high, low, close]:
+                    if price <= 0:
+                        continue
                     cluster_key = round(price / price_step) * price_step
                     price_clusters[cluster_key]['count'] += 1
                     price_clusters[cluster_key]['volume'] += volume * recency
                     price_clusters[cluster_key]['recency_score'] += recency
             
             # Calculate composite score for each level
-            scored_levels = []
+            scored_levels: List[tuple] = []
             for price, data in price_clusters.items():
                 # Composite score: touches × volume_weight × recency
                 score = data['count'] * np.log1p(data['volume']) * data['recency_score']
@@ -341,8 +396,8 @@ class MarketAnalyzer:
             scored_levels.sort(key=lambda x: x[1], reverse=True)
             
             # Separate into support and resistance
-            support_levels = []
-            resistance_levels = []
+            support_levels: List[Dict[str, Any]] = []
+            resistance_levels: List[Dict[str, Any]] = []
             
             for price, score, touches in scored_levels:
                 level_data = {'price': price, 'score': score, 'touches': touches}
@@ -367,10 +422,10 @@ class MarketAnalyzer:
             }
             
         except Exception as e:
-            logging.error(f"Failed to find support/resistance: {e}")
+            logger.error(f"Failed to find support/resistance: {e}")
             return None
     
-    def get_market_trend(self):
+    def get_market_trend(self) -> Optional[Dict[str, Any]]:
         """Analyze overall market trend using multiple indicators.
         
         Returns:
@@ -402,8 +457,6 @@ class MarketAnalyzer:
                 strength = 'MODERATE'
             
             # MACD confirmation (FIXED LOGIC)
-            # Positive histogram with oversold RSI = bullish divergence (strong buy)
-            # Negative histogram with overbought RSI = bearish divergence (strong sell)
             if macd['histogram'] > 0:
                 if trend in ['BULLISH', 'OVERSOLD']:
                     strength = 'STRONG'  # Momentum confirms
@@ -436,10 +489,10 @@ class MarketAnalyzer:
             }
             
         except Exception as e:
-            logging.error(f"Failed to get market trend: {e}")
+            logger.error(f"Failed to get market trend: {e}")
             return None
     
-    def should_adjust_grid_bias(self):
+    def should_adjust_grid_bias(self) -> Dict[str, Any]:
         """Determine grid bias with CORRECTED logic.
         
         FIXED: RSI oversold + MACD turning up = BUY signal
@@ -461,7 +514,7 @@ class MarketAnalyzer:
             
             # Strong trend warning - reduce bias in trending markets
             if adx_value > 35:
-                logging.warning(f"Strong trend detected (ADX={adx_value:.1f}), reducing grid bias")
+                logger.warning(f"Strong trend detected (ADX={adx_value:.1f}), reducing grid bias")
                 return {'bias': 'NEUTRAL', 'buy_weight': 0.5, 'sell_weight': 0.5, 
                         'confidence': 'LOW', 'warning': 'STRONG_TREND'}
             
@@ -495,10 +548,10 @@ class MarketAnalyzer:
                 return {'bias': 'NEUTRAL', 'buy_weight': 0.5, 'sell_weight': 0.5, 'confidence': 'MEDIUM'}
                 
         except Exception as e:
-            logging.error(f"Failed to determine grid bias: {e}")
+            logger.error(f"Failed to determine grid bias: {e}")
             return {'bias': 'NEUTRAL', 'buy_weight': 0.5, 'sell_weight': 0.5, 'confidence': 'LOW'}
     
-    def is_safe_to_trade(self):
+    def is_safe_to_trade(self) -> Dict[str, Any]:
         """Check if market conditions are suitable for grid trading.
         
         Returns:
@@ -508,8 +561,8 @@ class MarketAnalyzer:
             trend = self.get_market_trend()
             bb = self.calculate_bollinger_bands()
             
-            reasons = []
-            warnings = []
+            reasons: List[str] = []
+            warnings: List[str] = []
             
             # Check ADX for trend strength
             if trend and trend.get('adx'):
@@ -554,6 +607,6 @@ class MarketAnalyzer:
             }
             
         except Exception as e:
-            logging.error(f"Failed to check trading safety: {e}")
-            return {'safe': False, 'reasons': ['Analysis failed'], 'recommendation': 'WAIT'}
-        
+            logger.error(f"Failed to check trading safety: {e}")
+            return {'safe': False, 'reasons': ['Analysis failed'], 
+                    'warnings': [], 'recommendation': 'WAIT'}
