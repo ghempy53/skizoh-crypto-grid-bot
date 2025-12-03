@@ -23,7 +23,7 @@
 ## 📁 File Structure
 
 ```
-skizoh-grid-bot-v14/
+skizoh-crypto-grid-bot/
 ├── run_bot.sh                    # Main entry point (start bot)
 ├── monitor_bot.sh                # Status monitor & quick actions
 ├── test_setup.sh                 # Setup verification & testing
@@ -54,9 +54,9 @@ skizoh-grid-bot-v14/
 
 ```bash
 cd ~
-mkdir -p skizoh-grid-bot-v14/src/priv
-mkdir -p skizoh-grid-bot-v14/data
-cd skizoh-grid-bot-v14
+mkdir -p skizoh-crypto-grid-bot/src/priv
+mkdir -p skizoh-crypto-grid-bot/data
+cd skizoh-crypto-grid-bot
 
 python3 -m venv venv
 source venv/bin/activate
@@ -65,7 +65,7 @@ pip install numpy ccxt
 
 ### 2. Copy Files
 
-Copy all v14.1 files to their locations:
+Copy all files to their locations:
 - Python files → `src/`
 - Shell scripts → root directory
 - Config template → `src/priv/`
@@ -421,7 +421,7 @@ Upgrade to v14.1 - position state is now persisted to disk.
 6. **Shell Scripts** - Fixed inconsistent `BOT_DIR` paths across all scripts
 
 ### Shell Script Improvements
-- All scripts now use `BOT_DIR="$HOME/skizoh-grid-bot-v14"`
+- All scripts now use `BOT_DIR="$HOME/skizoh-crypto-grid-bot"`
 - Added `set -euo pipefail` for better error handling
 - Fixed multiple PID handling in monitor script
 - Added dependency checks for `bc` and `numfmt`

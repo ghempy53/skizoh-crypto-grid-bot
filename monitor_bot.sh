@@ -15,7 +15,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # FIXED: Use same directory as run_bot.sh and test_setup.sh
-BOT_DIR="$HOME/skizoh-grid-bot-v14"
+BOT_DIR="$HOME/skizoh-crypto-grid-bot"
 SRC_DIR="$BOT_DIR/src"
 DATA_DIR="$BOT_DIR/data"
 VENV_DIR="$BOT_DIR/venv"

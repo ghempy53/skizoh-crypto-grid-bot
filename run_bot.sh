@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 
 # Configuration - Updated for v14.1
 # IMPORTANT: All scripts must use the same BOT_DIR
-BOT_DIR="$HOME/skizoh-grid-bot-v14"
+BOT_DIR="$HOME/skizoh-crypto-grid-bot"
 SRC_DIR="$BOT_DIR/src"
 PRIV_DIR="$SRC_DIR/priv"
 DATA_DIR="$BOT_DIR/data"

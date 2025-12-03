@@ -17,7 +17,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Configuration - MUST match run_bot.sh and monitor_bot.sh
-BOT_DIR="$HOME/skizoh-grid-bot-v14"
+BOT_DIR="$HOME/skizoh-crypto-grid-bot"
 SRC_DIR="$BOT_DIR/src"
 PRIV_DIR="$SRC_DIR/priv"
 DATA_DIR="$BOT_DIR/data"
