@@ -1,7 +1,16 @@
-# Skizoh Crypto Grid Trading Bot
+# Skizoh Crypto Grid Trading Bot v14.1
 
-### New Features
+## What's New in v14.1
 
+### Bug Fixes
+- **Position State Persistence**: Positions now survive bot restarts (data saved to `position_state.json`)
+- **Path Handling**: Fixed relative path issues - bot now works from any directory
+- **Division by Zero Protection**: Added guards in P&L calculations, exposure checks, and grid repositioning
+- **Index Out of Bounds Fix**: MACD histogram calculation now validates array bounds
+- **Config Validation**: Added comprehensive validation for API keys and scenario parameters
+- **Shell Script Fixes**: All scripts now use consistent directory paths
+
+### New Features (v14)
 - **ADX Trend Filter**: Automatically pauses grid trading when ADX > 35 (strong trend)
 - **Bollinger Band Analysis**: Volatility assessment and price position tracking
 - **Volume-Weighted S/R**: Support/resistance levels now weighted by volume and recency
@@ -15,7 +24,9 @@
 
 ```
 skizoh-grid-bot-v14/
-├── run_bot.sh                    # Entry point
+├── run_bot.sh                    # Main entry point (start bot)
+├── monitor_bot.sh                # Status monitor & quick actions
+├── test_setup.sh                 # Setup verification & testing
 ├── README.md                     # This file
 ├── venv/                         # Python virtual environment
 ├── src/
@@ -31,6 +42,7 @@ skizoh-grid-bot-v14/
 └── data/
     ├── grid_bot.log              # Runtime logs
     ├── tax_transactions.csv      # Tax records
+    ├── position_state.json       # Position tracking (v14.1)
     └── form_8949_data_*.csv      # IRS-ready exports
 ```
 
@@ -53,7 +65,10 @@ pip install numpy ccxt
 
 ### 2. Copy Files
 
-Copy all v14 files to their locations.
+Copy all v14.1 files to their locations:
+- Python files → `src/`
+- Shell scripts → root directory
+- Config template → `src/priv/`
 
 ### 3. Configure API Keys
 
@@ -74,23 +89,87 @@ Update with your Binance.US API keys:
 ### 4. Set Permissions
 
 ```bash
-chmod +x run_bot.sh
+chmod +x run_bot.sh monitor_bot.sh test_setup.sh
 chmod 600 src/priv/config.json
 ```
 
 ### 5. Test Connection
 
 ```bash
-cd src
-source ../venv/bin/activate
-python3 test_api.py
+./test_setup.sh --all
 ```
 
 ### 6. Run the Bot
 
 ```bash
-cd ~/skizoh-grid-bot-v14
 ./run_bot.sh
+```
+
+---
+
+## 🛠️ Shell Scripts
+
+### run_bot.sh - Main Startup Script
+
+The primary way to start the bot. Performs comprehensive pre-flight checks.
+
+```bash
+# Full startup with all checks (recommended)
+./run_bot.sh
+
+# Skip checks for faster startup
+./run_bot.sh --skip-checks
+
+# Show help
+./run_bot.sh --help
+```
+
+**Pre-flight checks include:**
+- Directory structure verification
+- Virtual environment activation
+- Python dependency checks
+- Configuration validation
+- API key verification
+- Internet connectivity test
+- Running instance detection
+- Log rotation (if > 10MB)
+
+### monitor_bot.sh - Status Monitor
+
+Interactive monitoring tool for checking bot status and performing quick actions.
+
+```bash
+./monitor_bot.sh
+```
+
+**Features:**
+- Real-time bot process status
+- Multiple instance detection
+- Recent log preview
+- Position state display (v14.1)
+- Quick actions menu:
+  - View live logs
+  - Search for errors
+  - Generate tax summary
+  - Graceful/force stop bot
+
+### test_setup.sh - Setup Verification
+
+Comprehensive testing and validation script.
+
+```bash
+# Interactive menu
+./test_setup.sh
+
+# Run all tests
+./test_setup.sh --all
+
+# Specific tests
+./test_setup.sh --config    # Validate configuration
+./test_setup.sh --network   # Test connectivity
+./test_setup.sh --api       # Run API test
+./test_setup.sh --v14.1     # Check v14.1 features
+./test_setup.sh --system    # Show system info
 ```
 
 ---
@@ -206,6 +285,13 @@ Every position is tracked with:
 
 When selling, the **oldest positions are sold first** (FIFO), giving accurate realized P&L.
 
+### Position State Persistence (v14.1)
+
+Position data is now saved to `data/position_state.json`:
+- Survives bot restarts
+- Maintains accurate cost basis across sessions
+- Tracks cumulative realized P&L and fees
+
 ### Tax Log Format
 
 Enhanced CSV with columns:
@@ -221,6 +307,12 @@ cd src
 python3 tax_summary.py 2025
 ```
 
+Or use the monitor script:
+```bash
+./monitor_bot.sh
+# Select option [5] Generate tax summary
+```
+
 Outputs:
 - Summary report (console)
 - `form_8949_data_2025.csv` (IRS-ready)
@@ -234,6 +326,12 @@ Outputs:
 
 ```bash
 tail -f data/grid_bot.log
+```
+
+Or use the monitor script:
+```bash
+./monitor_bot.sh
+# Select option [1]
 ```
 
 ### Key Log Messages
@@ -293,8 +391,7 @@ You have too much crypto. The bot will favor sell orders until balanced.
 
 ### API errors
 ```bash
-cd src
-python3 test_api.py
+./test_setup.sh --api
 ```
 
 ### Import errors
@@ -302,6 +399,34 @@ python3 test_api.py
 source venv/bin/activate
 pip install numpy ccxt
 ```
+
+### Bot won't start
+```bash
+./test_setup.sh --all
+```
+
+### Position data lost after restart (pre-v14.1)
+Upgrade to v14.1 - position state is now persisted to disk.
+
+---
+
+## 📋 v14.1 Changelog
+
+### Bug Fixes
+1. **Path Handling** - Scripts now use absolute paths, work from any directory
+2. **Position Persistence** - Added `_load_state()` and `_save_state()` methods
+3. **Division by Zero** - Protected all division operations with guards
+4. **Index Bounds** - Fixed MACD histogram array access
+5. **Config Validation** - Added `_validate_config()` and `_validate_scenario()`
+6. **Shell Scripts** - Fixed inconsistent `BOT_DIR` paths across all scripts
+
+### Shell Script Improvements
+- All scripts now use `BOT_DIR="$HOME/skizoh-grid-bot-v14"`
+- Added `set -euo pipefail` for better error handling
+- Fixed multiple PID handling in monitor script
+- Added dependency checks for `bc` and `numfmt`
+- Added position state display to monitor
+- Added graceful/force stop options
 
 ---
 
@@ -320,9 +445,13 @@ pip install numpy ccxt
 ## 📞 Support
 
 1. Check logs: `tail -f data/grid_bot.log`
-2. Test API: `python3 test_api.py`
-3. Review config: Ensure all parameters are valid
+2. Test setup: `./test_setup.sh --all`
+3. Test API: `./test_setup.sh --api`
+4. Monitor status: `./monitor_bot.sh`
+5. Review config: Ensure all parameters are valid
 
 ---
 
 **Good luck trading! 🚀💰**
+
+*Version 14.1 - With position persistence and bug fixes*
