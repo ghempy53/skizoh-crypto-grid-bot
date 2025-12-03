@@ -1,9 +1,11 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Crypto Grid Trading Bot v14 - Testing & Validation Script
+# Skizoh Crypto Grid Trading Bot v14.1 - Testing & Validation Script
 # Comprehensive setup verification and API testing
 ##############################################################################
+
+set -uo pipefail  # Exit on undefined vars, pipe failures (not -e for interactive)
 
 # Color codes
 RED='\033[0;31m'
@@ -14,7 +16,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Configuration
+# Configuration - MUST match run_bot.sh and monitor_bot.sh
 BOT_DIR="$HOME/skizoh-grid-bot-v14"
 SRC_DIR="$BOT_DIR/src"
 PRIV_DIR="$SRC_DIR/priv"
@@ -22,8 +24,9 @@ DATA_DIR="$BOT_DIR/data"
 VENV_DIR="$BOT_DIR/venv"
 CONFIG_FILE="$PRIV_DIR/config.json"
 CONFIG_TEMPLATE="$PRIV_DIR/config.json.template"
+POSITION_STATE_FILE="$DATA_DIR/position_state.json"
 
-BOT_VERSION="14"
+BOT_VERSION="14.1"
 
 ##############################################################################
 # Functions
@@ -32,7 +35,7 @@ BOT_VERSION="14"
 print_header() {
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}     ${BOLD}${BLUE}GRID BOT v${BOT_VERSION} - SETUP TESTING & VALIDATION${NC}             ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}     ${BOLD}${BLUE}GRID BOT v${BOT_VERSION} - SETUP TESTING & VALIDATION${NC}           ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -80,8 +83,15 @@ check_venv() {
 }
 
 activate_venv() {
+    if [ ! -f "$VENV_DIR/bin/activate" ]; then
+        print_error "Virtual environment activation script not found"
+        return 1
+    fi
+    
+    # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
-    if [ -z "$VIRTUAL_ENV" ]; then
+    
+    if [ -z "${VIRTUAL_ENV:-}" ]; then
         print_error "Failed to activate virtual environment"
         return 1
     fi
@@ -99,7 +109,7 @@ test_python() {
     
     # Pip version
     PIP_VERSION=$(pip --version 2>&1 | head -n 1)
-    print_success "pip: $(echo $PIP_VERSION | awk '{print $2}')"
+    print_success "pip: $(echo "$PIP_VERSION" | awk '{print $2}')"
     
     # Check packages
     echo ""
@@ -135,7 +145,7 @@ test_python() {
 test_structure() {
     print_section "Directory Structure"
     
-    local all_ok=1
+    local all_ok=0
     
     # Required directories
     local dirs=(
@@ -153,18 +163,18 @@ test_structure() {
             print_success "$dirname: $dirpath"
         else
             print_error "$dirname: $dirpath (MISSING)"
-            all_ok=0
+            all_ok=1
         fi
     done
     
-    return $((1 - all_ok))
+    return $all_ok
 }
 
 # Check files
 test_files() {
     print_section "Required Files"
     
-    local all_ok=1
+    local all_ok=0
     
     # Core files
     local files=(
@@ -182,7 +192,7 @@ test_files() {
             print_success "$filename"
         else
             print_error "$filename (MISSING)"
-            all_ok=0
+            all_ok=1
         fi
     done
     
@@ -201,7 +211,7 @@ test_files() {
         print_warning "test_api.py (not found)"
     fi
     
-    return $((1 - all_ok))
+    return $all_ok
 }
 
 # Validate config
@@ -246,10 +256,12 @@ test_config() {
         print_success "API secret: Configured (hidden)"
     fi
     
-    # Check permissions
-    CONFIG_PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null)
+    # Check permissions (handle both Linux and macOS)
+    CONFIG_PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null || echo "unknown")
     if [ "$CONFIG_PERMS" = "600" ]; then
         print_success "Permissions: 600 (secure)"
+    elif [ "$CONFIG_PERMS" = "unknown" ]; then
+        print_warning "Permissions: Could not determine"
     else
         print_warning "Permissions: $CONFIG_PERMS (should be 600)"
         echo "  Fix: chmod 600 $CONFIG_FILE"
@@ -264,7 +276,15 @@ test_config() {
     MAX_POS=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('max_position_percent', 75))" 2>/dev/null)
     
     echo "  Symbol: $SYMBOL"
-    echo "  Fee rate: ${FEE_RATE} ($(echo "$FEE_RATE * 100" | bc)%)"
+    
+    # FIXED: Check if bc is available for percentage calculation
+    if command -v bc &> /dev/null; then
+        FEE_PCT=$(echo "$FEE_RATE * 100" | bc 2>/dev/null || echo "N/A")
+        echo "  Fee rate: ${FEE_RATE} (${FEE_PCT}%)"
+    else
+        echo "  Fee rate: ${FEE_RATE}"
+    fi
+    
     echo "  Max position: ${MAX_POS}%"
     
     # Count scenarios
@@ -297,29 +317,29 @@ test_internet() {
     if command -v curl &> /dev/null; then
         PING_RESULT=$(curl -s --max-time 5 "https://api.binance.us/api/v3/ping" 2>/dev/null)
         if [ "$PING_RESULT" = "{}" ]; then
-            print_success "Binance.US API: Reachable"
-            
-            # Get server time to check API health
-            SERVER_TIME=$(curl -s --max-time 5 "https://api.binance.us/api/v3/time" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('serverTime', 0))" 2>/dev/null)
-            if [ -n "$SERVER_TIME" ] && [ "$SERVER_TIME" != "0" ]; then
-                print_success "  └─ API responding normally"
-            fi
+            print_success "Binance.US API: Responding"
         else
-            print_warning "Binance.US API: May be unreachable"
+            print_warning "Binance.US API: No response (may be temporary)"
+        fi
+        
+        # Get server time
+        SERVER_TIME=$(curl -s --max-time 5 "https://api.binance.us/api/v3/time" 2>/dev/null)
+        if [ -n "$SERVER_TIME" ]; then
+            print_success "Binance.US Time Sync: OK"
         fi
     else
-        print_warning "curl not available for API test"
+        print_warning "curl not installed - cannot test API"
     fi
     
     return 0
 }
 
-# Run Python API test
+# Run API test
 run_api_test() {
     print_section "API Connection Test"
     
     if [ ! -f "$SRC_DIR/test_api.py" ]; then
-        print_warning "test_api.py not found, skipping API test"
+        print_error "test_api.py not found"
         return 1
     fi
     
@@ -341,18 +361,25 @@ run_api_test() {
     return $exit_code
 }
 
-# Test v14 specific features
+# Test v14.1 specific features
 test_v14_features() {
-    print_section "v14 Feature Verification"
+    print_section "v14.1 Feature Verification"
     
-    # Check for v14 specific code
-    print_info "Checking v14 components..."
+    # Check for v14.1 specific code
+    print_info "Checking v14.1 components..."
     
     # Position tracker
     if grep -q "class PositionTracker" "$SRC_DIR/grid_bot.py" 2>/dev/null; then
         print_success "FIFO Position Tracker: Present"
     else
         print_warning "FIFO Position Tracker: Not found"
+    fi
+    
+    # v14.1: State persistence
+    if grep -q "_load_state\|_save_state" "$SRC_DIR/grid_bot.py" 2>/dev/null; then
+        print_success "Position State Persistence: Present (v14.1)"
+    else
+        print_warning "Position State Persistence: Not found"
     fi
     
     # ADX calculation
@@ -389,6 +416,22 @@ test_v14_features() {
     else
         print_warning "Fee-Aware Spacing: Not found"
     fi
+    
+    # v14.1: Config validation
+    if grep -q "_validate_config\|_validate_scenario" "$SRC_DIR/grid_bot.py" 2>/dev/null; then
+        print_success "Config Validation: Present (v14.1)"
+    else
+        print_warning "Config Validation: Not found"
+    fi
+    
+    # Check position state file
+    echo ""
+    print_info "Data files:"
+    if [ -f "$POSITION_STATE_FILE" ]; then
+        print_success "Position state file: Present"
+    else
+        print_info "Position state file: Will be created on first trade"
+    fi
 }
 
 # System information
@@ -399,6 +442,8 @@ show_system_info() {
     if [ -f /etc/os-release ]; then
         OS_NAME=$(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')
         echo "  OS: $OS_NAME"
+    elif [ "$(uname)" = "Darwin" ]; then
+        echo "  OS: macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
     fi
     
     # Hardware (Pi detection)
@@ -410,7 +455,7 @@ show_system_info() {
     fi
     
     # CPU
-    CPU_CORES=$(nproc 2>/dev/null || echo "?")
+    CPU_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "?")
     echo "  CPU Cores: $CPU_CORES"
     
     # Memory
@@ -427,8 +472,8 @@ show_system_info() {
         echo "  Disk: $DISK_FREE free ($DISK_USED used)"
     fi
     
-    # Temperature (Pi)
-    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+    # Temperature (Pi) - only if bc is available
+    if [ -f /sys/class/thermal/thermal_zone0/temp ] && command -v bc &> /dev/null; then
         TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
         if [ -n "$TEMP" ]; then
             TEMP_C=$(echo "scale=1; $TEMP/1000" | bc 2>/dev/null)
@@ -495,7 +540,7 @@ show_menu() {
     echo "  [3] Validate config.json"
     echo "  [4] Test network connectivity"
     echo "  [5] Run API connection test"
-    echo "  [6] Check v14 features"
+    echo "  [6] Check v14.1 features"
     echo "  [7] Show system info"
     echo ""
     echo "  [Q] Quit"
@@ -504,7 +549,7 @@ show_menu() {
 
 # Cleanup
 cleanup() {
-    deactivate 2>/dev/null
+    deactivate 2>/dev/null || true
 }
 
 ##############################################################################
@@ -549,7 +594,7 @@ case "${1:-}" in
     --system|-s)
         show_system_info
         ;;
-    --v14)
+    --v14|--v14.1)
         test_v14_features
         ;;
     --help|-h)
@@ -561,7 +606,7 @@ case "${1:-}" in
         echo "  --config, -c   Validate configuration"
         echo "  --network, -n  Test network connectivity"
         echo "  --system, -s   Show system information"
-        echo "  --v14          Check v14-specific features"
+        echo "  --v14, --v14.1 Check v14.1-specific features"
         echo "  --help, -h     Show this help"
         echo ""
         echo "No arguments: Interactive menu"

@@ -1,9 +1,11 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Crypto Grid Trading Bot v14 - Startup Script
-# Enhanced with v14 feature checks and improved validation
+# Skizoh Crypto Grid Trading Bot v14.1 - Startup Script
+# Enhanced with v14.1 feature checks, improved validation, and bug fixes
 ##############################################################################
+
+set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
 # Color codes for pretty output
 RED='\033[0;31m'
@@ -14,7 +16,8 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Configuration - Updated for v14
+# Configuration - Updated for v14.1
+# IMPORTANT: All scripts must use the same BOT_DIR
 BOT_DIR="$HOME/skizoh-grid-bot-v14"
 SRC_DIR="$BOT_DIR/src"
 PRIV_DIR="$SRC_DIR/priv"
@@ -25,9 +28,10 @@ CONFIG_FILE="$PRIV_DIR/config.json"
 CONFIG_TEMPLATE="$PRIV_DIR/config.json.template"
 LOG_FILE="$DATA_DIR/grid_bot.log"
 TAX_FILE="$DATA_DIR/tax_transactions.csv"
+POSITION_STATE_FILE="$DATA_DIR/position_state.json"
 
-# v14 version info
-BOT_VERSION="14"
+# v14.1 version info
+BOT_VERSION="14.1"
 BOT_NAME="Skizoh Smart Grid Bot"
 
 ##############################################################################
@@ -37,7 +41,7 @@ BOT_NAME="Skizoh Smart Grid Bot"
 print_header() {
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC}     ${BOLD}${BLUE}SKIZOH CRYPTO GRID TRADING BOT v${BOT_VERSION}${NC}                       ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}     ${BOLD}${BLUE}SKIZOH CRYPTO GRID TRADING BOT v${BOT_VERSION}${NC}                     ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}     ${BOLD}Smart Automated Trading with Risk Management${NC}            ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -71,7 +75,7 @@ check_directory() {
         echo ""
         echo "To set up the bot, run:"
         echo "  mkdir -p $BOT_DIR/{src/priv,data,venv}"
-        echo "  # Then extract v14 files to $BOT_DIR"
+        echo "  # Then extract v14.1 files to $BOT_DIR"
         exit 1
     fi
     cd "$BOT_DIR" || exit 1
@@ -115,10 +119,10 @@ check_virtualenv() {
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_info "Creating virtual environment..."
-            python3 -m venv "$VENV_DIR"
-            if [ $? -eq 0 ]; then
+            if python3 -m venv "$VENV_DIR"; then
                 print_success "Virtual environment created"
                 # Activate and install dependencies
+                # shellcheck disable=SC1091
                 source "$VENV_DIR/bin/activate"
                 print_info "Installing dependencies..."
                 pip install --upgrade pip > /dev/null 2>&1
@@ -140,9 +144,15 @@ check_virtualenv() {
 
 # Activate virtual environment
 activate_venv() {
+    if [ ! -f "$VENV_DIR/bin/activate" ]; then
+        print_error "Virtual environment activation script not found"
+        exit 1
+    fi
+    
+    # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
     
-    if [ -z "$VIRTUAL_ENV" ]; then
+    if [ -z "${VIRTUAL_ENV:-}" ]; then
         print_error "Failed to activate virtual environment"
         exit 1
     fi
@@ -213,7 +223,7 @@ check_bot_files() {
     fi
     
     if [ $missing -eq 1 ]; then
-        print_error "Missing required files. Please reinstall v14."
+        print_error "Missing required files. Please reinstall v14.1."
         exit 1
     fi
 }
@@ -265,12 +275,14 @@ check_config() {
     fi
     print_success "API credentials configured"
     
-    # Check permissions
-    CONFIG_PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null)
-    
-    if [ "$CONFIG_PERMS" != "600" ]; then
-        print_warning "Fixing config permissions ($CONFIG_PERMS → 600)"
-        chmod 600 "$CONFIG_FILE"
+    # Check permissions (handle both Linux and macOS stat syntax)
+    if command -v stat &> /dev/null; then
+        CONFIG_PERMS=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %A "$CONFIG_FILE" 2>/dev/null || echo "unknown")
+        
+        if [ "$CONFIG_PERMS" != "600" ] && [ "$CONFIG_PERMS" != "unknown" ]; then
+            print_warning "Fixing config permissions ($CONFIG_PERMS → 600)"
+            chmod 600 "$CONFIG_FILE"
+        fi
     fi
     print_success "Config permissions secure (600)"
 }
@@ -285,20 +297,30 @@ check_internet() {
     fi
     
     # Test Binance.US connectivity
-    if curl -s --max-time 5 "https://api.binance.us/api/v3/ping" > /dev/null 2>&1; then
-        print_success "Binance.US API reachable"
-    else
-        print_warning "Cannot reach Binance.US API (may be temporary)"
+    if command -v curl &> /dev/null; then
+        if curl -s --max-time 5 "https://api.binance.us/api/v3/ping" > /dev/null 2>&1; then
+            print_success "Binance.US API reachable"
+        else
+            print_warning "Cannot reach Binance.US API (may be temporary)"
+        fi
     fi
 }
 
 # Check for running instances
 check_running_instance() {
-    if pgrep -f "python3.*main.py" > /dev/null; then
+    # Get all matching PIDs
+    local pids
+    pids=$(pgrep -f "python3.*main.py" 2>/dev/null || true)
+    
+    if [ -n "$pids" ]; then
         print_warning "Bot may already be running!"
         echo ""
         echo "  Running processes:"
-        ps aux | grep "python3.*main.py" | grep -v grep | awk '{print "    PID: "$2" | CPU: "$3"% | MEM: "$4"% | Time: "$10}'
+        for pid in $pids; do
+            if ps -p "$pid" > /dev/null 2>&1; then
+                ps -p "$pid" -o pid=,pcpu=,pmem=,etime= 2>/dev/null | awk '{print "    PID: "$1" | CPU: "$2"% | MEM: "$3"% | Time: "$4}'
+            fi
+        done
         echo ""
         read -p "  Continue anyway? (y/N): " -n 1 -r
         echo ""
@@ -329,8 +351,8 @@ show_system_info() {
         echo "  Disk: $DISK_USAGE"
     fi
     
-    # CPU Temp (Raspberry Pi)
-    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+    # CPU Temp (Raspberry Pi) - only if bc is available
+    if [ -f /sys/class/thermal/thermal_zone0/temp ] && command -v bc &> /dev/null; then
         TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
         if [ -n "$TEMP" ]; then
             TEMP_C=$(echo "scale=1; $TEMP/1000" | bc 2>/dev/null || echo "N/A")
@@ -343,34 +365,50 @@ show_system_info() {
         LOG_SIZE=$(du -h "$LOG_FILE" 2>/dev/null | cut -f1)
         echo "  Log size: $LOG_SIZE"
     fi
+    
+    # v14.1: Position state file
+    if [ -f "$POSITION_STATE_FILE" ]; then
+        print_success "Position state file: Present"
+    else
+        print_info "Position state file: Will be created on first run"
+    fi
 }
 
 # Backup and rotate logs
 manage_logs() {
     if [ -f "$LOG_FILE" ]; then
-        LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null)
+        LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null || echo "0")
         
         # If log > 10MB, rotate
         if [ -n "$LOG_SIZE" ] && [ "$LOG_SIZE" -gt 10485760 ]; then
             BACKUP_NAME="$DATA_DIR/grid_bot_$(date +%Y%m%d_%H%M%S).log"
-            print_warning "Log file large ($(numfmt --to=iec $LOG_SIZE 2>/dev/null || echo "${LOG_SIZE}B"))"
+            
+            # Use numfmt if available, otherwise show raw bytes
+            if command -v numfmt &> /dev/null; then
+                print_warning "Log file large ($(numfmt --to=iec "$LOG_SIZE"))"
+            else
+                print_warning "Log file large (${LOG_SIZE} bytes)"
+            fi
+            
             mv "$LOG_FILE" "$BACKUP_NAME"
-            gzip "$BACKUP_NAME" 2>/dev/null
+            gzip "$BACKUP_NAME" 2>/dev/null || true
             print_success "Log rotated: ${BACKUP_NAME}.gz"
         fi
     fi
 }
 
-# Show v14 features
+# Show v14.1 features
 show_v14_features() {
     echo ""
-    echo -e "${BOLD}v14 Features Active:${NC}"
+    echo -e "${BOLD}v14.1 Features Active:${NC}"
     echo "  • FIFO Position Tracking (accurate P&L)"
+    echo "  • Position State Persistence (survives restarts)"
     echo "  • ADX Trend Filter (pauses in strong trends)"
     echo "  • Fee-Aware Grid Spacing"
     echo "  • Position Exposure Limits"
     echo "  • Wilder's RSI (industry standard)"
     echo "  • Enhanced Drawdown Protection"
+    echo "  • Improved Input Validation"
 }
 
 # Pre-flight checklist
@@ -410,7 +448,7 @@ preflight_checklist() {
 start_bot() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}              ${BOLD}STARTING GRID BOT v${BOT_VERSION}...${NC}                         ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}              ${BOLD}STARTING GRID BOT v${BOT_VERSION}...${NC}                       ${GREEN}║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
@@ -435,14 +473,14 @@ start_bot() {
         print_info "Check log: $LOG_FILE"
     fi
     
-    deactivate 2>/dev/null
+    deactivate 2>/dev/null || true
 }
 
 # Cleanup handler
 cleanup() {
     echo ""
     print_info "Cleaning up..."
-    deactivate 2>/dev/null
+    deactivate 2>/dev/null || true
 }
 
 ##############################################################################
@@ -477,9 +515,10 @@ case "${1:-}" in
         echo ""
         echo -e "${BOLD}Ready to start. Confirm settings:${NC}"
         echo "  • Binance.US API"
-        echo "  • Smart Grid Trading v14"
+        echo "  • Smart Grid Trading v14.1"
         echo "  • ADX Trend Filter: Active"
         echo "  • FIFO P&L Tracking: Active"
+        echo "  • Position State Persistence: Active"
         echo "  • Position Limits: Active"
         echo ""
         read -p "Start the bot now? (Y/n): " -n 1 -r
