@@ -194,16 +194,29 @@ class MarketAnalyzer:
             dx = 100 * di_diff / np.where(di_sum > 0, di_sum, 1)
             
             # Calculate ADX (smoothed DX)
-            if len(dx) <= period:
+            # FIXED: Use mean-based initialization since DX is already 0-100
+            if len(dx) <= period * 2:
                 return None
             
-            adx = wilder_smooth(dx[period:], period)
+            # Start ADX calculation after DX has stabilized
+            dx_subset = dx[period:]  # Skip first 'period' DX values (warmup)
             
-            if len(adx) == 0:
+            if len(dx_subset) < period:
+                return None
+            
+            # First ADX = Simple average of first 'period' DX values
+            adx_values = np.zeros(len(dx_subset))
+            adx_values[period - 1] = np.mean(dx_subset[:period])
+            
+            # Subsequent ADX values use Wilder smoothing
+            for i in range(period, len(dx_subset)):
+                adx_values[i] = (adx_values[i-1] * (period - 1) + dx_subset[i]) / period
+            
+            if adx_values[-1] == 0:
                 return None
             
             return {
-                'adx': float(adx[-1]),
+                'adx': float(adx_values[-1]),
                 'plus_di': float(plus_di[-1]),
                 'minus_di': float(minus_di[-1]),
                 'trend_direction': 'UP' if plus_di[-1] > minus_di[-1] else 'DOWN'
