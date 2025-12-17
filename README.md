@@ -42,7 +42,7 @@ skizoh-crypto-grid-bot/
 └── data/
     ├── grid_bot.log              # Runtime logs
     ├── tax_transactions.csv      # Tax records
-    ├── position_state.json       # Position tracking (v14.1)
+    ├── position_state.json       # Position tracking
     └── form_8949_data_*.csv      # IRS-ready exports
 ```
 
@@ -396,29 +396,6 @@ pip install numpy ccxt
 ./test_setup.sh --all
 ```
 
-### Position data lost after restart (pre-v14.1)
-Upgrade to v14.1 - position state is now persisted to disk.
-
----
-
-## 📋 v14.1 Changelog
-
-### Bug Fixes
-1. **Path Handling** - Scripts now use absolute paths, work from any directory
-2. **Position Persistence** - Added `_load_state()` and `_save_state()` methods
-3. **Division by Zero** - Protected all division operations with guards
-4. **Index Bounds** - Fixed MACD histogram array access
-5. **Config Validation** - Added `_validate_config()` and `_validate_scenario()`
-6. **Shell Scripts** - Fixed inconsistent `BOT_DIR` paths across all scripts
-
-### Shell Script Improvements
-- All scripts now use `BOT_DIR="$HOME/skizoh-crypto-grid-bot"`
-- Added `set -euo pipefail` for better error handling
-- Fixed multiple PID handling in monitor script
-- Added dependency checks for `bc` and `numfmt`
-- Added position state display to monitor
-- Added graceful/force stop options
-
 ---
 
 ## 🎯 Tips for Maximum Profit
@@ -445,4 +422,4 @@ Upgrade to v14.1 - position state is now persisted to disk.
 
 **Good luck trading! 🚀💰**
 
-*Version 14.1 - With position persistence and bug fixes*
+*Version 1.0 - First stable version in production*
