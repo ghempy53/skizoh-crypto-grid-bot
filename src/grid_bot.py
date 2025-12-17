@@ -123,8 +123,16 @@ class PositionTracker:
                 
                 with open(self.state_file, 'w') as f:
                     json.dump(state, f, indent=2)
+                
+                # Periodically recalculate to prevent float drift
+                self._recalculate_totals()
         except Exception as e:
             logger.warning(f"Could not save position state: {e}")
+    
+    def _recalculate_totals(self):
+        """Recalculate totals from positions to prevent floating-point drift."""
+        self.total_quantity = sum(p['quantity'] for p in self.positions)
+        self.total_cost = sum(p['cost_basis'] for p in self.positions)
     
     def add_position(self, quantity: float, price: float, fee: float = 0):
         """Add a buy position."""
@@ -243,6 +251,14 @@ class SmartGridTradingBot:
     
     # Exchange fee rate (Binance.US maker/taker)
     DEFAULT_FEE_RATE = 0.001  # 0.1%
+    # Trend pause duration in seconds (30 minutes)
+    TREND_PAUSE_SECONDS = 1800
+    # Grid repositioning threshold multiplier
+    REPOSITION_THRESHOLD_MULTIPLIER = 2.5
+    # Minimum time between grid updates in seconds
+    MIN_GRID_UPDATE_INTERVAL = 600
+    # Fee safety factor for minimum grid spacing calculation
+    FEE_SAFETY_FACTOR = 2.5
     
     def __init__(self, config_file: str = 'config.json'):
         """Initialize the smart grid trading bot."""
@@ -326,7 +342,6 @@ class SmartGridTradingBot:
         self.investment_percent = scenario['investment_percent']
         self.min_order_size_usdt = scenario['min_order_size_usdt']
         self.stop_loss_percent = scenario['stop_loss_percent']
-        self.take_profit_percent = scenario.get('take_profit_percent')
         self.atr_period = scenario['atr_period']
         self.volatility_threshold = scenario['volatility_threshold']
         self.check_interval = scenario['check_interval_seconds']
@@ -341,7 +356,7 @@ class SmartGridTradingBot:
         # Minimum profitable spacing = 2 * fee_rate * safety_factor
         # With 0.1% fee each way, need > 0.2% spacing minimum
         # We use 2.5x safety factor
-        min_spacing = (2 * self.fee_rate * 100) * 2.5
+        min_spacing = (2 * self.fee_rate * 100) * self.FEE_SAFETY_FACTOR
         
         if self.grid_spacing_percent < min_spacing:
             old_spacing = self.grid_spacing_percent
@@ -486,7 +501,7 @@ class SmartGridTradingBot:
         
         if not safety['safe']:
             # Pause trading for 30 minutes when strong trend detected
-            self.trend_pause_until = time.time() + 1800
+            self.trend_pause_until = time.time() + self.TREND_PAUSE_SECONDS
             for reason in safety['reasons']:
                 logger.warning(f"🚨 {reason}")
             logger.warning(f"⏸️ Pausing grid trading for 30 minutes: {safety['recommendation']}")
@@ -582,10 +597,10 @@ class SmartGridTradingBot:
             return False
         
         price_move_percent = abs((current_price - self.grid_center_price) / self.grid_center_price) * 100
-        reposition_threshold = self.grid_spacing_percent * 2.5
+        reposition_threshold = self.grid_spacing_percent * self.REPOSITION_THRESHOLD_MULTIPLIER
         
         time_since_update = time.time() - self.last_grid_update
-        min_time_between_updates = 600  # 10 minutes
+        min_time_between_updates = self.MIN_GRID_UPDATE_INTERVAL
         
         if price_move_percent > reposition_threshold and time_since_update > min_time_between_updates:
             logger.info(f"🔄 Grid repositioning needed: price moved {price_move_percent:.2f}%")
@@ -604,11 +619,6 @@ class SmartGridTradingBot:
             balances = self.get_balances()
             if not balances:
                 return False
-            
-            # Check trend filter
-            if not self.check_trend_filter():
-                logger.info("Skipping grid calculation due to trend filter")
-                return True  # Not a failure, just waiting
             
             # Get market bias
             bias = self.market_analyzer.should_adjust_grid_bias()
@@ -656,14 +666,16 @@ class SmartGridTradingBot:
             for i in range(1, buy_levels + 1):
                 price_level = current_price * (1 - (i * self.grid_spacing_percent / 100))
                 
+                # Skip invalid price levels early
+                if price_level <= 0:
+                    logger.warning(f"Skipping buy level {i}: price would be ${price_level:.2f}")
+                    continue
+                
                 # Adjust to S/R
                 if sr_levels and sr_levels.get('support'):
                     price_level = self._adjust_to_sr_level(price_level, sr_levels['support'], 'support')
                 
                 if usdt_per_buy < self.min_order_size_usdt:
-                    continue
-                
-                if price_level <= 0:
                     continue
                 
                 quantity = usdt_per_buy / price_level
@@ -862,7 +874,9 @@ class SmartGridTradingBot:
             
             if side == 'buy':
                 self.position_tracker.add_position(new_fill, price, fee)
-            # For sells, we'll handle full position closure when order completes
+            else:
+                # Track partial sell fills immediately to keep position in sync
+                self.position_tracker.close_position(new_fill, price, fee)
             
             self.active_orders[order_id]['tracked_filled'] = filled
             logger.info(f"📊 Partial fill: {side.upper()} {new_fill:.6f} @ ${price:.2f} "
@@ -874,9 +888,19 @@ class SmartGridTradingBot:
         if 'fee' in order_info and order_info['fee']:
             fee_info = order_info['fee']
             if fee_info.get('cost'):
-                if fee_info.get('currency') in ['USDT', 'USD', 'USDC']:
+                fee_currency = fee_info.get('currency', '')
+                if fee_currency in ['USDT', 'USD', 'USDC']:
                     fee = float(fee_info['cost'])
+                elif fee_currency == 'BNB':
+                    # BNB fees need BNB price conversion
+                    try:
+                        bnb_ticker = self.exchange.fetch_ticker('BNB/USDT')
+                        fee = float(fee_info['cost']) * bnb_ticker['last']
+                    except Exception:
+                        # Fallback estimate if BNB price unavailable
+                        fee = float(fee_info['cost']) * 300
                 else:
+                    # Assume fee is in base currency
                     fee = float(fee_info['cost']) * price
         
         if fee == 0 and amount > 0 and price > 0:

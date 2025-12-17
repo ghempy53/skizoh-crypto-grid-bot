@@ -8,10 +8,16 @@ import csv
 from datetime import datetime
 from collections import defaultdict
 import os
+from pathlib import Path
 
+# Get absolute path to data directory
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DATA_DIR = SCRIPT_DIR.parent / 'data'
 
-def load_transactions(filename='../data/tax_transactions.csv'):
+def load_transactions(filename=None):
     """Load all transactions from CSV."""
+    if filename is None:
+        filename = DATA_DIR / 'tax_transactions.csv'
     transactions = []
     
     try:
@@ -23,7 +29,6 @@ def load_transactions(filename='../data/tax_transactions.csv'):
     except FileNotFoundError:
         print(f"Error: {filename} not found. Run the bot first.")
         return []
-
 
 def calculate_summary(transactions):
     """Calculate summary statistics from transactions."""
@@ -130,39 +135,43 @@ def export_form_8949_csv(transactions, year=None):
         print(f"No sales to export for {year}.")
         return
     
-    filename = f'../data/form_8949_data_{year}.csv'
+    filename = DATA_DIR / f'form_8949_data_{year}.csv'
     
-    with open(filename, 'w', newline='') as f:
-        writer = csv.writer(f)
-        
-        # Form 8949 headers
-        writer.writerow([
-            'Description of Property',
-            'Date Acquired',
-            'Date Sold',
-            'Proceeds (Sales Price)',
-            'Cost Basis',
-            'Gain or Loss',
-            'Notes'
-        ])
-        
-        for sale in sells:
-            proceeds = float(sale.get('Net Proceeds (USD)', 0) or 0)
-            cost_basis = float(sale.get('Cost Basis (USD)', 0) or 0)
-            gain_loss = float(sale.get('Realized P&L (USD)', 0) or 0)
+    try:
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
             
+            # Form 8949 headers
             writer.writerow([
-                f"{sale['Amount']} {sale['Asset']}",
-                'Various (FIFO)',
-                sale['Date/Time'].split(' ')[0],
-                f"${proceeds:.2f}",
-                f"${cost_basis:.2f}",
-                f"${gain_loss:.2f}",
-                sale.get('Notes', '')
+                'Description of Property',
+                'Date Acquired',
+                'Date Sold',
+                'Proceeds (Sales Price)',
+                'Cost Basis',
+                'Gain or Loss',
+                'Notes'
             ])
-    
-    print(f"\n✅ Form 8949 data exported to: {filename}")
-    print("Import this into tax software or give to your accountant.\n")
+            
+            for sale in sells:
+                proceeds = float(sale.get('Net Proceeds (USD)', 0) or 0)
+                cost_basis = float(sale.get('Cost Basis (USD)', 0) or 0)
+                gain_loss = float(sale.get('Realized P&L (USD)', 0) or 0)
+                
+                writer.writerow([
+                    f"{sale['Amount']} {sale['Asset']}",
+                    'Various (FIFO)',
+                    sale['Date/Time'].split(' ')[0],
+                    f"${proceeds:.2f}",
+                    f"${cost_basis:.2f}",
+                    f"${gain_loss:.2f}",
+                    sale.get('Notes', '')
+                ])
+        
+        print(f"\n✅ Form 8949 data exported to: {filename}")
+        print("Import this into tax software or give to your accountant.\n")
+    except IOError as e:
+        print(f"❌ Error writing file: {e}")
+        return
 
 
 def export_full_report(transactions, year=None):
@@ -180,16 +189,19 @@ def export_full_report(transactions, year=None):
         print(f"No transactions for {year}")
         return
     
-    filename = f'../data/full_report_{year}.csv'
+    filename = DATA_DIR / f'full_report_{year}.csv'
     
-    with open(filename, 'w', newline='') as f:
-        if transactions:
-            writer = csv.DictWriter(f, fieldnames=transactions[0].keys())
-            writer.writeheader()
-            writer.writerows(transactions)
-    
-    print(f"✅ Full report exported to: {filename}\n")
-
+    try:
+        with open(filename, 'w', newline='') as f:
+            if transactions:
+                writer = csv.DictWriter(f, fieldnames=transactions[0].keys())
+                writer.writeheader()
+                writer.writerows(transactions)
+        
+        print(f"✅ Full report exported to: {filename}\n")
+    except IOError as e:
+        print(f"❌ Error writing file: {e}")
+        return
 
 if __name__ == "__main__":
     import sys

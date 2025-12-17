@@ -160,6 +160,30 @@ def test_api_connection():
     print(f"  Crypto value: ${base_balance * current_price:.2f}")
     print()
     
+    # Test scenario configuration
+    print("⚙️  Test 5: Validating scenario configurations...")
+    try:
+        scenarios = config.get('config_data', [])
+        fee_rate = config.get('fee_rate', 0.001)
+        min_profitable_spacing = (2 * fee_rate * 100) * 2.5
+        
+        warnings = []
+        for scenario in scenarios:
+            spacing = scenario.get('grid_spacing_percent', 0)
+            if spacing < min_profitable_spacing:
+                warnings.append(f"  ⚠️  '{scenario['name']}': spacing {spacing}% may not be profitable")
+        
+        if warnings:
+            print("✓ Scenarios loaded with warnings:")
+            for w in warnings:
+                print(w)
+        else:
+            print(f"✓ All {len(scenarios)} scenarios have profitable spacing")
+        print()
+    except Exception as e:
+        print(f"⚠️ Could not validate scenarios: {e}")
+        print()
+
     # Final result
     print("="*60)
     print("✅ ALL TESTS PASSED!")

@@ -104,11 +104,11 @@ class ConfigManager:
                 raise ValueError(f"Missing required config field: {field}")
         
         # Validate API credentials aren't placeholders
-        if self.config['api_key'] == 'YOUR_BINANCE_US_API_KEY':
-            logger.warning("API key appears to be a placeholder - update config.json")
+        if 'YOUR_' in self.config['api_key'] or not self.config['api_key']:
+            raise ValueError("API key not configured - update config.json with your actual API key")
         
-        if self.config['api_secret'] == 'YOUR_BINANCE_US_API_SECRET':
-            logger.warning("API secret appears to be a placeholder - update config.json")
+        if 'YOUR_' in self.config['api_secret'] or not self.config['api_secret']:
+            raise ValueError("API secret not configured - update config.json with your actual API secret")
         
         # Validate scenarios
         scenarios = self.config['config_data']

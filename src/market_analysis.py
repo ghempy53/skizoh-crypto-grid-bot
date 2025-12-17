@@ -173,6 +173,8 @@ class MarketAnalyzer:
                 if len(data) < period:
                     return np.zeros(len(data))
                 smoothed = np.zeros(len(data))
+                # Note: Using sum (not mean) is intentional - the scaling factor
+                # cancels out when calculating DI ratios (smooth_dm / atr)
                 smoothed[period-1] = np.sum(data[:period])
                 for i in range(period, len(data)):
                     smoothed[i] = smoothed[i-1] - (smoothed[i-1] / period) + data[i]
