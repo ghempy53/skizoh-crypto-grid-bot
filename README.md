@@ -1,6 +1,6 @@
-# Skizoh Crypto Grid Trading Bot v14.1
+# Skizoh Crypto Grid Trading Bot v1.0
 
-## What's New in v14.1
+## v1.0
 
 ### Bug Fixes
 - **Position State Persistence**: Positions now survive bot restarts (data saved to `position_state.json`)
@@ -10,7 +10,7 @@
 - **Config Validation**: Added comprehensive validation for API keys and scenario parameters
 - **Shell Script Fixes**: All scripts now use consistent directory paths
 
-### New Features (v14)
+### New Features
 - **ADX Trend Filter**: Automatically pauses grid trading when ADX > 35 (strong trend)
 - **Bollinger Band Analysis**: Volatility assessment and price position tracking
 - **Volume-Weighted S/R**: Support/resistance levels now weighted by volume and recency
@@ -50,12 +50,11 @@ skizoh-crypto-grid-bot/
 
 ## 🔧 Quick Setup
 
-### 1. Create Directory & Virtual Environment
+### 1. Clone Repository & Create Virtual Environment
 
 ```bash
 cd ~
-mkdir -p skizoh-crypto-grid-bot/src/priv
-mkdir -p skizoh-crypto-grid-bot/data
+git clone git@github.com:ghempy53/skizoh-crypto-grid-bot.git
 cd skizoh-crypto-grid-bot
 
 python3 -m venv venv
@@ -63,17 +62,9 @@ source venv/bin/activate
 pip install numpy ccxt
 ```
 
-### 2. Copy Files
-
-Copy all files to their locations:
-- Python files → `src/`
-- Shell scripts → root directory
-- Config template → `src/priv/`
-
-### 3. Configure API Keys
+### 2. Configure API Keys
 
 ```bash
-cp src/priv/config.json.template src/priv/config.json
 nano src/priv/config.json
 ```
 
