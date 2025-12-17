@@ -991,7 +991,7 @@ class SmartGridTradingBot:
             except Exception:
                 pass
             
-            total_value = balances['quote'] + (balances['base'] * current_price)
+            total_value = balances['quote_total'] + (balances['base_total'] * current_price)
             
             # Track peak for drawdown calculation
             if total_value > self.peak_value:
