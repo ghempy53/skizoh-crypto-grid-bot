@@ -738,12 +738,26 @@ class SmartGridTradingBot:
             logger.info("Volatility outside range, adjusting...")
         
         try:
+            # Get minimum order size from exchange
+            market = self.exchange.market(self.symbol)
+            min_amount = market.get('limits', {}).get('amount', {}).get('min', 0.0001)
+            
             for level in self.grid_levels:
                 if level['filled'] or level.get('order_id'):
                     continue
                 
                 price = level['price']
                 if price <= 0:
+                    continue
+                
+                quantity = self.exchange.amount_to_precision(self.symbol, level['quantity'])
+                quantity = float(quantity)
+                
+                if quantity <= 0:
+                    continue
+                
+                # Skip if below minimum order size (don't spam errors)
+                if quantity < min_amount:
                     continue
                 
                 quantity = self.exchange.amount_to_precision(self.symbol, level['quantity'])
