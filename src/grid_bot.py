@@ -45,7 +45,7 @@ import time
 import json
 import logging
 from datetime import datetime
-from collections import deque
+from collections import deque, Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import numpy as np
@@ -307,6 +307,16 @@ class SmartGridTradingBot:
         # Tax logging with absolute path
         self.tax_log_file = str(self.data_dir / 'tax_transactions.csv')
         self.initialize_tax_log()
+        
+        # Dynamic scenario adjustment settings
+        self.enable_dynamic_scenarios = config.get('enable_dynamic_scenarios', True)
+        self.cycles_per_scenario_check = config.get('cycles_per_scenario_check', 7)
+        self.cycles_since_scenario_check = 0
+        self.current_scenario_index = None  # Track current scenario index
+        self.last_scenario_change = time.time()
+        self.min_scenario_hold_time = config.get('min_scenario_hold_minutes', 60) * 60
+        self.scenario_change_threshold = config.get('scenario_change_confidence', 0.7)
+        self.recent_scenario_scores = []  # Track recent recommendations for stability
         
         # Grid repositioning
         self.grid_center_price: Optional[float] = None
@@ -1062,6 +1072,256 @@ class SmartGridTradingBot:
         
         return True
     
+    def evaluate_scenario_change(self) -> Optional[Dict[str, Any]]:
+        """Evaluate if scenario change is needed based on current market conditions."""
+        try:
+            logger.info("🔍 Evaluating market conditions for scenario adjustment...")
+            
+            # Check if feature is enabled
+            if not self.enable_dynamic_scenarios:
+                return None
+            
+            # Check if enough time has passed since last change
+            time_since_change = time.time() - self.last_scenario_change
+            if time_since_change < self.min_scenario_hold_time:
+                remaining = int(self.min_scenario_hold_time - time_since_change)
+                logger.info(f"⏳ Scenario hold time not met ({remaining}s remaining)")
+                return None
+            
+            # Get current market analysis
+            ticker = self.exchange.fetch_ticker(self.symbol)
+            current_price = ticker['last']
+            high_24h = ticker['high']
+            low_24h = ticker['low']
+            
+            if current_price <= 0:
+                return None
+            
+            volatility_24h = ((high_24h - low_24h) / current_price) * 100
+            
+            # Get indicators
+            rsi = self.market_analyzer.calculate_rsi_wilder()
+            adx_data = self.market_analyzer.calculate_adx()
+            bb = self.market_analyzer.calculate_bollinger_bands()
+            
+            # Get recommended scenario
+            recommended_index = self.config_manager._recommend_scenario(
+                volatility_24h, rsi, adx_data, bb
+            )
+            
+            if recommended_index is None:
+                return None
+            
+            # Add to recent recommendations for stability
+            self.recent_scenario_scores.append(recommended_index)
+            if len(self.recent_scenario_scores) > 3:
+                self.recent_scenario_scores.pop(0)
+            
+            # Get consensus from recent recommendations
+            if len(self.recent_scenario_scores) >= 2:
+                # Use mode (most common recommendation)
+                consensus = Counter(self.recent_scenario_scores).most_common(1)[0][0]
+            else:
+                consensus = recommended_index
+            
+            # Check if change is significant enough
+            if consensus == self.current_scenario_index:
+                logger.info(f"✓ Current scenario '{self.scenario_name}' still optimal")
+                return None
+            
+            # Calculate confidence in change
+            confidence = self._calculate_change_confidence(
+                volatility_24h, rsi, adx_data, consensus
+            )
+            
+            if confidence < self.scenario_change_threshold:
+                logger.info(f"📊 Change confidence too low ({confidence:.2f} < {self.scenario_change_threshold})")
+                return None
+            
+            recommended_scenario = self.config_manager.scenarios[consensus]
+            
+            return {
+                'recommended_index': consensus,
+                'recommended_scenario': recommended_scenario,
+                'current_volatility': volatility_24h,
+                'current_rsi': rsi,
+                'current_adx': adx_data['adx'] if adx_data else None,
+                'confidence': confidence,
+                'reason': self._get_change_reason(volatility_24h, rsi, adx_data)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error evaluating scenario change: {e}")
+            return None
+
+    def _calculate_change_confidence(self, volatility: float, rsi: Optional[float], 
+                                    adx: Optional[Dict], target_index: int) -> float:
+        """Calculate confidence score for scenario change."""
+        confidence = 0.5  # Base confidence
+        
+        if self.current_scenario_index is None:
+            return confidence
+            
+        current_scenario = self.config_manager.scenarios[self.current_scenario_index]
+        target_scenario = self.config_manager.scenarios[target_index]
+        
+        # Check volatility match
+        if 'volatility' in target_scenario['name'].lower():
+            if volatility > 5 and 'high' in target_scenario['name'].lower():
+                confidence += 0.2
+            elif volatility < 2 and 'low' in target_scenario['name'].lower():
+                confidence += 0.2
+        
+        # Check ADX conditions
+        if adx and adx.get('adx'):
+            adx_value = adx['adx']
+            if adx_value > 35:  # Strong trend
+                if 'conservative' in target_scenario['name'].lower():
+                    confidence += 0.3
+                elif 'swing' in target_scenario['name'].lower():
+                    confidence += 0.2
+            elif adx_value < 20:  # No trend (good for grid)
+                if 'scalping' in target_scenario['name'].lower() or 'balanced' in target_scenario['name'].lower():
+                    confidence += 0.2
+        
+        # Check RSI extremes
+        if rsi:
+            if rsi < 30 or rsi > 70:  # Extreme conditions
+                if 'conservative' in target_scenario['name'].lower():
+                    confidence += 0.1
+        
+        # Penalize frequent switching
+        time_since_change = time.time() - self.last_scenario_change
+        if time_since_change < 7200:  # Less than 2 hours
+            confidence *= 0.7
+        
+        return min(1.0, confidence)
+
+    def _get_change_reason(self, volatility: float, rsi: Optional[float], 
+                           adx: Optional[Dict]) -> str:
+        """Generate human-readable reason for scenario change."""
+        reasons = []
+        
+        if volatility > 5:
+            reasons.append(f"High volatility ({volatility:.1f}%)")
+        elif volatility < 2:
+            reasons.append(f"Low volatility ({volatility:.1f}%)")
+        
+        if adx and adx.get('adx'):
+            if adx['adx'] > 35:
+                reasons.append(f"Strong trend (ADX={adx['adx']:.1f})")
+            elif adx['adx'] < 20:
+                reasons.append(f"Ranging market (ADX={adx['adx']:.1f})")
+        
+        if rsi:
+            if rsi < 30:
+                reasons.append(f"Oversold (RSI={rsi:.1f})")
+            elif rsi > 70:
+                reasons.append(f"Overbought (RSI={rsi:.1f})")
+        
+        return ", ".join(reasons) if reasons else "Market conditions changed"
+
+    def switch_scenario(self, new_scenario: Dict[str, Any], index: int, reason: str = ""):
+        """Safely switch to a new scenario."""
+        try:
+            old_scenario_name = self.scenario_name
+            
+            logger.info("="*60)
+            logger.info(f"🔄 SCENARIO CHANGE INITIATED")
+            logger.info(f"  From: {old_scenario_name}")
+            logger.info(f"  To: {new_scenario['name']}")
+            logger.info(f"  Reason: {reason}")
+            logger.info("="*60)
+            
+            # Cancel all active orders
+            logger.info("Cancelling active orders...")
+            self.cancel_all_orders()
+            
+            # Wait for orders to clear
+            time.sleep(2)
+            
+            # Load new scenario parameters
+            self.load_scenario(new_scenario)
+            self.current_scenario_index = index
+            self.last_scenario_change = time.time()
+            
+            # Recalculate grid with new parameters
+            logger.info("Recalculating grid with new parameters...")
+            if not self.calculate_grid_levels(reposition=True):
+                logger.error("Failed to calculate new grid levels")
+                # Revert to old scenario on failure
+                if self.current_scenario_index is not None:
+                    old_scenario = self.config_manager.scenarios[self.current_scenario_index]
+                    self.load_scenario(old_scenario)
+                return False
+            
+            # Clear recent recommendations to avoid flip-flopping
+            self.recent_scenario_scores = [index]
+            
+            logger.info(f"✅ Successfully switched to '{new_scenario['name']}' scenario")
+            logger.info(f"  New grid: {self.grid_levels_count} levels @ {self.grid_spacing_percent}% spacing")
+            
+            # Log the change for tracking
+            self._log_scenario_change(old_scenario_name, new_scenario['name'], reason)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error switching scenario: {e}")
+            return False
+
+    def _log_scenario_change(self, from_scenario: str, to_scenario: str, reason: str):
+        """Log scenario changes for analysis."""
+        try:
+            change_log_file = self.data_dir / 'scenario_changes.csv'
+            file_exists = change_log_file.exists()
+            
+            with open(change_log_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(['Timestamp', 'From', 'To', 'Reason', 'Cycles', 'P&L'])
+                
+                current_value = self.calculate_current_value()
+                pnl = current_value['profit'] if current_value else 0
+                
+                writer.writerow([
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    from_scenario,
+                    to_scenario,
+                    reason,
+                    self.cycles_completed,
+                    f"{pnl:.2f}"
+                ])
+                
+        except Exception as e:
+            logger.warning(f"Could not log scenario change: {e}")
+
+    def check_dynamic_adjustment(self):
+        """Check if dynamic scenario adjustment is needed."""
+        self.cycles_since_scenario_check += 1
+        
+        # Only check at specified intervals
+        if self.cycles_since_scenario_check < self.cycles_per_scenario_check:
+            return
+
+        self.cycles_since_scenario_check = 0
+
+        # Evaluate if change is needed
+        evaluation = self.evaluate_scenario_change()
+
+        if evaluation:
+            logger.info(f"📈 Scenario change recommended with {evaluation['confidence']:.1%} confidence")
+
+            # Attempt to switch
+            success = self.switch_scenario(
+                evaluation['recommended_scenario'],
+                evaluation['recommended_index'],
+                evaluation['reason']
+            )
+
+            if not success:
+                logger.warning("Scenario switch failed, continuing with current settings")
+
     def emergency_stop(self):
         """Emergency stop with full reporting."""
         try:
@@ -1159,12 +1419,24 @@ class SmartGridTradingBot:
             logger.info("All orders cancelled")
         except Exception as e:
             logger.error(f"Failed to cancel orders: {e}")
-    
+
     def run(self):
-        """Main bot loop."""
+        """Main bot loop with dynamic scenario adjustment."""
         logger.info(f"🤖 Starting Smart Grid Trading Bot v14.1 - {self.scenario_name}")
         logger.info(f"📊 Grid: {self.grid_levels_count} levels @ {self.grid_spacing_percent}% spacing")
         logger.info(f"💰 Fee rate: {self.fee_rate*100:.3f}%")
+        
+        # Show dynamic adjustment status
+        if self.enable_dynamic_scenarios:
+            logger.info(f"🔄 Dynamic adjustment: Every {self.cycles_per_scenario_check} cycles")
+        else:
+            logger.info("🔄 Dynamic adjustment: Disabled")
+        
+        # Store initial scenario index
+        for i, scenario in enumerate(self.config_manager.scenarios):
+            if scenario['name'] == self.scenario_name:
+                self.current_scenario_index = i
+                break
         
         balances = self.get_balances()
         if balances:
@@ -1207,6 +1479,10 @@ class SmartGridTradingBot:
                 # Place and check orders
                 self.place_grid_orders()
                 self.check_orders()
+                
+                # Check for dynamic scenario adjustment
+                if self.cycles_completed > 0 and self.enable_dynamic_scenarios:
+                    self.check_dynamic_adjustment()
                 
                 # Status update
                 self.calculate_current_value()
