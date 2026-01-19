@@ -17,6 +17,7 @@
 - **Max Drawdown Tracking**: Real-time drawdown monitoring with emergency stops
 - **Enhanced Tax Logging**: Pre-calculated cost basis and realized P&L per trade
 - **Trading Safety Check**: Comprehensive pre-trade market condition analysis
+- **Dynamic Scenario Adjustment**: Bot automatically switches scenarios based on market conditions every 7 cycles
 
 ---
 
@@ -137,7 +138,7 @@ Interactive monitoring tool for checking bot status and performing quick actions
 - Real-time bot process status
 - Multiple instance detection
 - Recent log preview
-- Position state display (v14.1)
+- Position state display
 - Quick actions menu:
   - View live logs
   - Search for errors
@@ -159,7 +160,6 @@ Comprehensive testing and validation script.
 ./test_setup.sh --config    # Validate configuration
 ./test_setup.sh --network   # Test connectivity
 ./test_setup.sh --api       # Run API test
-./test_setup.sh --v14.1     # Check v14.1 features
 ./test_setup.sh --system    # Show system info
 ```
 
@@ -236,6 +236,47 @@ Minimum = (2 × fee_rate × 100) × safety_factor
 
 ## 🛡️ Risk Management
 
+## 🔄 Dynamic Scenario Adjustment
+
+The bot now automatically adapts to changing market conditions by switching scenarios:
+
+### How It Works
+- Evaluates market every 7 cycles (configurable)
+- Analyzes volatility, RSI, ADX, and trend strength  
+- Switches scenarios when confidence threshold is met (70%)
+- Maintains minimum hold time (60 minutes) to prevent flip-flopping
+- Logs all changes to `data/scenario_changes.csv`
+
+### Configuration Settings
+```json
+{
+    "enable_dynamic_scenarios": true,      // Enable/disable feature
+    "cycles_per_scenario_check": 7,        // How often to check (cycles)
+    "min_scenario_hold_minutes": 60,       // Minimum time in scenario
+    "scenario_change_confidence": 0.7      // Confidence required (0.0-1.0)
+}
+```
+
+### Automatic Scenario Selection Logic
+- **High Volatility** (>5% daily range) → High Volatility scenario
+- **Low Volatility** (<2% daily range) → Low Volatility scenario  
+- **Strong Trend** (ADX >35) → Conservative scenario
+- **Ranging Market** (ADX <20) → Balanced/Low Volatility scenario
+- **Extreme RSI** (<30 or >70) → Conservative scenario
+
+### Monitoring Changes
+All automatic scenario changes are logged to `data/scenario_changes.csv`:
+```csv
+Timestamp,From,To,Reason,Cycles,P&L
+2025-01-19 14:30:00,Balanced,High Volatility,"High volatility (6.2%)",15,45.67
+```
+
+### Log Messages to Watch For
+- `🔍 Evaluating market conditions for scenario adjustment...` (every 7 cycles)
+- `📈 Scenario change recommended with 85% confidence`
+- `🔄 SCENARIO CHANGE INITIATED`
+- `✅ Successfully switched to 'Conservative' scenario`
+
 ### Exposure Limits
 
 The bot enforces:
@@ -276,7 +317,7 @@ Every position is tracked with:
 
 When selling, the **oldest positions are sold first** (FIFO), giving accurate realized P&L.
 
-### Position State Persistence (v14.1)
+### Position State Persistence
 
 Position data is now saved to `data/position_state.json`:
 - Survives bot restarts
