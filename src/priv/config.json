@@ -16,6 +16,12 @@
     "_comment_order": "Max % of portfolio for a single order (prevents concentration)",
     "max_single_order_percent": 12,
     
+    "_comment_dynamic": "=== DYNAMIC ADJUSTMENT SETTINGS (v14.1) ===",
+    "enable_dynamic_scenarios": true,
+    "cycles_per_scenario_check": 7,
+    "min_scenario_hold_minutes": 60,
+    "scenario_change_confidence": 0.7,
+    
     "_comment_scenarios": "=== TRADING SCENARIOS ===",
     "_comment_spacing": "IMPORTANT: Grid spacing MUST be > 0.5% to profit with 0.1% fees!",
     
