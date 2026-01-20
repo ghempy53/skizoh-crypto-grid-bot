@@ -26,47 +26,47 @@ help:
 # Build the Docker image
 build:
 	@echo "Building Docker image..."
-	docker-compose build
+	docker compose build
 
 # Run the bot in detached mode
 run:
 	@echo "Starting Grid Bot..."
-	docker-compose up -d
+	docker compose up -d
 	@echo ""
 	@echo "Bot started! View logs with: make logs"
 
 # Stop the bot
 stop:
 	@echo "Stopping Grid Bot..."
-	docker-compose down
+	docker compose down
 
 # Restart the bot
 restart:
 	@echo "Restarting Grid Bot..."
-	docker-compose restart
+	docker compose restart
 
 # View live logs
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 # Open shell in running container
 shell:
-	docker-compose exec gridbot /bin/bash
+	docker compose exec gridbot /bin/bash
 
 # Test API connection
 test-api:
-	docker-compose run --rm gridbot test-api
+	docker compose run --rm gridbot test-api
 
 # Generate tax summary
 tax-summary:
-	docker-compose run --rm gridbot tax-summary $(YEAR)
+	docker compose run --rm gridbot tax-summary $(YEAR)
 
 # Show container status
 status:
 	@echo ""
 	@echo "Container Status:"
 	@echo "-----------------"
-	@docker-compose ps
+	@docker compose ps
 	@echo ""
 	@echo "Resource Usage:"
 	@echo "---------------"
@@ -76,7 +76,7 @@ status:
 # Clean up everything
 clean:
 	@echo "Stopping and removing containers..."
-	docker-compose down -v --rmi local
+	docker compose down -v --rmi local
 	@echo "Cleanup complete"
 
 # Initial setup helper
