@@ -1,11 +1,16 @@
 {
+    "_comment": "=== SKIZOH GRID BOT - DOCKER CONFIGURATION ===",
+    
     "api_key": "YOUR_BINANCE_US_API_KEY",
     "api_secret": "YOUR_BINANCE_US_API_SECRET",
     
     "_comment_symbol": "Trading pair - must be available on Binance.US",
     "symbol": "ETH/USDT",
     
-    "_comment_v14_settings": "=== NEW v14 SETTINGS (required) ===",
+    "_comment_docker": "=== DOCKER-SPECIFIC SETTINGS ===",
+    "_comment_default_scenario": "Default scenario when running non-interactively in Docker",
+    "_comment_scenario_options": "Conservative, Balanced, Aggressive, Low Volatility, High Volatility, Micro Scalping, Swing Trading, Night Mode",
+    "default_scenario": "Balanced",
     
     "_comment_fee": "Your Binance.US fee rate (0.001 = 0.1%). Check your VIP level.",
     "fee_rate": 0.001,
@@ -15,12 +20,6 @@
     
     "_comment_order": "Max % of portfolio for a single order (prevents concentration)",
     "max_single_order_percent": 12,
-    
-    "_comment_dynamic": "=== DYNAMIC ADJUSTMENT SETTINGS (v14.1) ===",
-    "enable_dynamic_scenarios": true,
-    "cycles_per_scenario_check": 7,
-    "min_scenario_hold_minutes": 60,
-    "scenario_change_confidence": 0.7,
     
     "_comment_scenarios": "=== TRADING SCENARIOS ===",
     "_comment_spacing": "IMPORTANT: Grid spacing MUST be > 0.5% to profit with 0.1% fees!",
