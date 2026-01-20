@@ -6,6 +6,112 @@ This document outlines comprehensive optimizations for running the Skizoh Crypto
 
 ---
 
+# Disabling IPv6 on Raspberry Pi for Docker
+
+A guide to permanently disable IPv6 for Docker on Raspberry Pi OS, solving connection issues with Docker registries.
+
+## The Problem
+
+Docker may attempt to connect to registries over IPv6, causing errors like:
+```
+dial tcp [2600:1f18:2148:bc00:...]:443: connect: cannot assign requested address
+```
+
+## Solution
+
+### Step 1: Disable IPv6 at Kernel Boot
+
+Edit the kernel command line:
+```bash
+sudo nano /boot/firmware/cmdline.txt
+```
+
+Add to the **end** of the existing line (same line, with a space before):
+```
+ ipv6.disable=1
+```
+
+> ⚠️ **Important:** Do not create a new line. The file must remain a single line.
+
+### Step 2: Configure Docker Daemon
+
+Create or edit the Docker daemon configuration:
+```bash
+sudo nano /etc/docker/daemon.json
+```
+
+Add the following:
+```json
+{
+  "ipv6": false,
+  "ip6tables": false
+}
+```
+
+### Step 3: Clean Up /etc/hosts
+```bash
+sudo nano /etc/hosts
+```
+
+Keep it minimal:
+```
+127.0.0.1       localhost
+127.0.1.1       raspberrypi
+```
+
+> 💡 **Tip:** Do not hardcode Docker registry IPs — they change over time and will cause issues.
+
+### Step 4: Reboot
+```bash
+sudo reboot
+```
+
+### Step 5: Verify
+
+After reboot, confirm IPv6 is disabled:
+```bash
+cat /proc/sys/net/ipv6/conf/all/disable_ipv6
+```
+
+Expected output: `No such file or directory` (the IPv6 module is not loaded)
+
+Confirm Docker has IPv6 disabled:
+```bash
+docker network inspect bridge | grep -i enableipv6
+```
+
+Expected output: `"EnableIPv6": false`
+
+### Step 6: Test
+```bash
+docker pull hello-world
+```
+
+Should complete without IPv6 errors.
+
+## Why This Works
+
+The `ipv6.disable=1` kernel parameter prevents the IPv6 module from loading at boot, before any services start. This is more reliable than `sysctl` settings, which can be overridden by services like NetworkManager or dhcpcd.
+
+## Troubleshooting
+
+If you still see IPv6 errors after following these steps:
+
+1. Clear Docker's build cache:
+```bash
+   docker builder prune -a
+```
+
+2. Full Docker cleanup:
+```bash
+   docker system prune -a --volumes
+```
+
+3. Restart Docker:
+```bash
+   sudo systemctl restart docker
+```
+
 ## 🔍 Analysis of Current State
 
 ### Current Performance Metrics (Estimated)
