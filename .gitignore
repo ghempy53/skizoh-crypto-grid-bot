@@ -19,9 +19,6 @@ venv/
 .vscode/
 *.code-workspace
 
-# Ignore priv directory
-src/priv/
-
 # Ignore private key data
 priv_data.txt
 
