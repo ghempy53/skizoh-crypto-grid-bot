@@ -1,86 +1,107 @@
 {
-    "_comment": "=== SKIZOH GRID BOT - DOCKER CONFIGURATION ===",
+    "_comment": "=== SKIZOH GRID BOT v2.0 - PROFIT OPTIMIZED CONFIGURATION ===",
     
     "api_key": "YOUR_BINANCE_US_API_KEY",
     "api_secret": "YOUR_BINANCE_US_API_SECRET",
     
-    "_comment_symbol": "Trading pair - must be available on Binance.US",
+    "_comment_symbol": "Trading pair - ETH/USDT recommended for liquidity",
     "symbol": "ETH/USDT",
     
-    "_comment_docker": "=== DOCKER-SPECIFIC SETTINGS ===",
-    "_comment_default_scenario": "Default scenario when running non-interactively in Docker",
-    "_comment_scenario_options": "Conservative, Balanced, Aggressive, Low Volatility, High Volatility, Micro Scalping, Swing Trading, Night Mode",
-    "default_scenario": "Balanced",
-    
-    "_comment_fee": "Your Binance.US fee rate (0.001 = 0.1%). Check your VIP level.",
+    "_comment_fees": "=== FEE OPTIMIZATION ===",
+    "_comment_fee_rate": "Your actual fee rate. Check Binance.US VIP level.",
     "fee_rate": 0.001,
     
-    "_comment_position": "Max % of portfolio that can be in crypto (prevents over-exposure)",
-    "max_position_percent": 75,
+    "_comment_bnb": "Enable BNB for 25% fee discount (requires BNB balance)",
+    "use_bnb_for_fees": false,
     
-    "_comment_order": "Max % of portfolio for a single order (prevents concentration)",
-    "max_single_order_percent": 12,
+    "_comment_docker": "=== DOCKER / NON-INTERACTIVE SETTINGS ===",
+    "default_scenario": "Balanced",
+    
+    "_comment_exposure": "=== RISK MANAGEMENT ===",
+    "_comment_position": "Max % of portfolio in crypto (prevents over-exposure)",
+    "max_position_percent": 70,
+    
+    "_comment_order": "Max % for single order (prevents concentration risk)",
+    "max_single_order_percent": 10,
+    
+    "_comment_dynamic": "=== DYNAMIC SCENARIO ADJUSTMENT ===",
+    "_comment_enable_dynamic": "Auto-switch scenarios based on market conditions",
+    "enable_dynamic_scenarios": true,
+    
+    "_comment_cycles": "Cycles between scenario evaluations (lower = more responsive)",
+    "cycles_per_scenario_check": 5,
+    
+    "_comment_hold": "Minimum minutes to stay in a scenario (prevents flip-flopping)",
+    "min_scenario_hold_minutes": 45,
+    
+    "_comment_confidence": "Required confidence to change scenarios (0.0-1.0)",
+    "scenario_change_confidence": 0.65,
     
     "_comment_scenarios": "=== TRADING SCENARIOS ===",
-    "_comment_spacing": "IMPORTANT: Grid spacing MUST be > 0.5% to profit with 0.1% fees!",
+    "_comment_profit": "PROFIT TIP: Grid spacing must exceed 2x fees to profit!",
+    "_comment_minimum": "With 0.1% fee: minimum profitable spacing = 0.5%",
     
     "config_data": [
         {
             "name": "Conservative",
-            "description": "Low risk - Best for learning and uncertain markets",
+            "description": "Low risk - Wide grids, fewer cycles, steady gains",
             "risk_level": 1,
             "grid_levels": 6,
             "grid_spacing_percent": 1.5,
-            "investment_percent": 65,
+            "investment_percent": 60,
             "min_order_size_usdt": 15,
-            "stop_loss_percent": 12,
+            "stop_loss_percent": 10,
             "atr_period": 14,
             "volatility_threshold": 3.5,
             "check_interval_seconds": 90,
-            "_profit_per_cycle": "~1.3% after fees"
+            "_expected_profit_per_cycle": "1.3%",
+            "_best_conditions": "Uncertain markets, learning phase"
         },
         {
             "name": "Balanced",
-            "description": "Medium risk - Normal market conditions (RECOMMENDED)",
+            "description": "RECOMMENDED - Optimal risk/reward for most conditions",
             "risk_level": 3,
             "grid_levels": 10,
-            "grid_spacing_percent": 1.0,
+            "grid_spacing_percent": 0.9,
             "investment_percent": 70,
-            "min_order_size_usdt": 15,
+            "min_order_size_usdt": 12,
             "stop_loss_percent": 15,
             "atr_period": 14,
             "volatility_threshold": 4.5,
             "check_interval_seconds": 60,
-            "_profit_per_cycle": "~0.8% after fees"
+            "_expected_profit_per_cycle": "0.7%",
+            "_best_conditions": "Normal volatility, ADX 15-25"
         },
         {
             "name": "Aggressive",
-            "description": "Higher risk - Tighter grids, more cycles, requires monitoring",
+            "description": "Higher risk - Tighter grids, more frequent cycles",
             "risk_level": 4,
-            "grid_levels": 12,
-            "grid_spacing_percent": 0.7,
+            "grid_levels": 14,
+            "grid_spacing_percent": 0.65,
             "investment_percent": 75,
-            "min_order_size_usdt": 12,
+            "min_order_size_usdt": 10,
             "stop_loss_percent": 18,
             "atr_period": 14,
             "volatility_threshold": 5.0,
             "check_interval_seconds": 45,
-            "_profit_per_cycle": "~0.5% after fees"
+            "_expected_profit_per_cycle": "0.45%",
+            "_best_conditions": "Active monitoring, good liquidity"
         },
         {
             "name": "Low Volatility",
-            "description": "For calm, ranging markets (ADX < 20) - minimum viable spacing",
+            "description": "Optimized for calm, ranging markets (ADX < 20)",
             "risk_level": 3,
             "grid_levels": 12,
-            "grid_spacing_percent": 0.6,
+            "grid_spacing_percent": 0.55,
             "investment_percent": 70,
-            "min_order_size_usdt": 12,
+            "min_order_size_usdt": 10,
             "stop_loss_percent": 12,
             "atr_period": 20,
-            "volatility_threshold": 3.0,
-            "check_interval_seconds": 60,
-            "_profit_per_cycle": "~0.4% after fees",
-            "_warning": "Only use when ADX < 20!"
+            "volatility_threshold": 2.5,
+            "check_interval_seconds": 50,
+            "_expected_profit_per_cycle": "0.35%",
+            "_best_conditions": "ADX < 20, daily range < 2%",
+            "_warning": "Only profitable in truly ranging markets!"
         },
         {
             "name": "High Volatility",
@@ -94,26 +115,28 @@
             "atr_period": 10,
             "volatility_threshold": 8.0,
             "check_interval_seconds": 60,
-            "_profit_per_cycle": "~1.8% after fees"
+            "_expected_profit_per_cycle": "1.8%",
+            "_best_conditions": "Daily range > 5%, major news events"
         },
         {
-            "name": "Micro Scalping",
-            "description": "Maximum cycles - ONLY for VIP fee tiers or BNB discount!",
+            "name": "Scalping",
+            "description": "Max frequency - ONLY with VIP fees or BNB discount!",
             "risk_level": 5,
-            "grid_levels": 14,
+            "grid_levels": 16,
             "grid_spacing_percent": 0.5,
             "investment_percent": 65,
-            "min_order_size_usdt": 10,
+            "min_order_size_usdt": 8,
             "stop_loss_percent": 10,
             "atr_period": 8,
             "volatility_threshold": 4.0,
             "check_interval_seconds": 30,
-            "_profit_per_cycle": "~0.3% after fees",
-            "_warning": "Marginal profits! Only profitable with lower fees."
+            "_expected_profit_per_cycle": "0.3%",
+            "_best_conditions": "Low fees, high frequency, tight spreads",
+            "_warning": "MARGINAL profits! Requires fee optimization."
         },
         {
             "name": "Swing Trading",
-            "description": "Very wide grids - catches major moves over days",
+            "description": "Very wide grids - Catches major moves over days",
             "risk_level": 3,
             "grid_levels": 5,
             "grid_spacing_percent": 3.0,
@@ -123,11 +146,12 @@
             "atr_period": 24,
             "volatility_threshold": 10.0,
             "check_interval_seconds": 180,
-            "_profit_per_cycle": "~2.8% after fees"
+            "_expected_profit_per_cycle": "2.8%",
+            "_best_conditions": "Multi-day holds, less monitoring"
         },
         {
             "name": "Night Mode",
-            "description": "Conservative overnight trading - wider stops, less exposure",
+            "description": "Conservative overnight - Reduced exposure, wider stops",
             "risk_level": 2,
             "grid_levels": 6,
             "grid_spacing_percent": 1.2,
@@ -137,7 +161,23 @@
             "atr_period": 14,
             "volatility_threshold": 3.5,
             "check_interval_seconds": 120,
-            "_profit_per_cycle": "~1.0% after fees"
+            "_expected_profit_per_cycle": "1.0%",
+            "_best_conditions": "Overnight trading, unmonitored periods"
+        },
+        {
+            "name": "Mean Reversion",
+            "description": "NEW: Optimized for ranging markets with RSI signals",
+            "risk_level": 3,
+            "grid_levels": 10,
+            "grid_spacing_percent": 0.75,
+            "investment_percent": 70,
+            "min_order_size_usdt": 12,
+            "stop_loss_percent": 12,
+            "atr_period": 14,
+            "volatility_threshold": 4.0,
+            "check_interval_seconds": 45,
+            "_expected_profit_per_cycle": "0.55%",
+            "_best_conditions": "ADX < 25, clear S/R levels"
         }
     ]
 }
