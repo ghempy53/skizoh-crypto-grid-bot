@@ -1,22 +1,13 @@
 # =============================================================================
-# Skizoh Crypto Grid Trading Bot - Optimized Docker Compose
-# For Raspberry Pi deployment with resource constraints
+# Skizoh Grid Bot v2.0 - Docker Compose Configuration
+# Optimized for Raspberry Pi deployment
 # =============================================================================
 #
-# Optimizations:
-#   - Memory limits appropriate for Pi 3/4/5
-#   - CPU limits to prevent system slowdown
-#   - tmpfs for temporary data (reduce SD card wear)
-#   - Optimized logging with compression
-#   - DNS caching for faster API calls
-#   - Swap limits for memory spikes
-#
 # Usage:
-#   docker compose up -d        # Start bot in background
-#   docker compose logs -f      # View live logs
+#   docker compose up -d        # Start bot
+#   docker compose logs -f      # View logs
 #   docker compose down         # Stop bot
 #   docker compose restart      # Restart bot
-#   docker compose stats        # View resource usage
 #
 # =============================================================================
 
@@ -25,171 +16,81 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # Enable BuildKit for faster builds
       args:
         BUILDKIT_INLINE_CACHE: 1
     
-    image: skizoh-grid-bot:latest
+    image: skizoh-grid-bot:2.0
     container_name: skizoh-gridbot
     
-    # Restart policy - handles crashes and reboots
     restart: unless-stopped
     
-    # =========================================================================
-    # Environment Configuration
-    # =========================================================================
     environment:
       - TZ=${TZ:-America/Denver}
       - PYTHONUNBUFFERED=1
-      # Reduce numpy thread usage for Pi
       - OMP_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - MKL_NUM_THREADS=1
-      # Scenario selection (for non-interactive mode)
       - GRIDBOT_SCENARIO=${GRIDBOT_SCENARIO:-}
       - GRIDBOT_NONINTERACTIVE=${GRIDBOT_NONINTERACTIVE:-false}
     
-    # =========================================================================
-    # Volume Mounts
-    # =========================================================================
     volumes:
-      # Configuration file (read-only for security)
+      # Config file (read-only)
       - ./config.json:/app/src/priv/config.json:ro
-      
-      # Data persistence (logs, position state, tax records)
+      # Data persistence
       - ./data:/app/data
     
-    # =========================================================================
-    # tmpfs - Reduce SD card writes (RAM-based storage)
-    # =========================================================================
     tmpfs:
-      # Temporary files (Python cache, etc.)
       - /tmp:size=32m,mode=1777
-      # Runtime files that don't need persistence
       - /app/.cache:size=16m,mode=755,uid=1000,gid=1000
     
-    # =========================================================================
-    # Resource Limits - CRITICAL for Raspberry Pi
-    # =========================================================================
-    # Choose the appropriate profile for your Pi model:
-    #
-    # Pi 3 (1GB RAM):  memory: 256M, cpus: 0.5
-    # Pi 4 (2GB RAM):  memory: 384M, cpus: 0.75
-    # Pi 4 (4GB+ RAM): memory: 512M, cpus: 1.0
-    # Pi 5:            memory: 768M, cpus: 1.5
-    #
+    # Resource limits - adjust for your Pi model
+    # Pi 3: memory: 256M, cpus: 0.5
+    # Pi 4 (2GB): memory: 384M, cpus: 0.75
+    # Pi 4 (4GB+): memory: 512M, cpus: 1.0
+    # Pi 5: memory: 768M, cpus: 1.5
     deploy:
       resources:
         limits:
-          # Maximum resources the container can use
           cpus: '0.75'
           memory: 384M
         reservations:
-          # Guaranteed minimum resources
           cpus: '0.25'
           memory: 128M
     
-    # Memory swap limit (prevents OOM by using disk swap)
-    # Set to 2x memory limit for safety buffer
     mem_swappiness: 10
     memswap_limit: 768M
-    
-    # OOM settings - don't kill immediately, let cleanup happen
     oom_kill_disable: false
     oom_score_adj: 500
     
-    # =========================================================================
-    # Logging Configuration
-    # =========================================================================
     logging:
       driver: "json-file"
       options:
-        # Reduced log size for Pi SD card
         max-size: "5m"
         max-file: "2"
-        # Enable compression (saves space)
         compress: "true"
-        # Add labels for easier filtering
-        labels: "gridbot"
     
-    # =========================================================================
-    # Network Configuration
-    # =========================================================================
-    # Use host DNS for faster resolution
     dns:
       - 8.8.8.8
       - 1.1.1.1
     
-    # Network mode (default bridge is fine)
     networks:
       - gridbot-net
     
-    # =========================================================================
-    # Health Check
-    # =========================================================================
     healthcheck:
-      test: ["CMD", "python3", "-c", "import ccxt; import numpy; print('healthy')"]
-      # Increased intervals for Pi (reduce CPU usage)
+      test: ["CMD", "python3", "-c", "import ccxt; import numpy; print('ok')"]
       interval: 120s
       timeout: 15s
       retries: 3
       start_period: 60s
     
-    # =========================================================================
-    # Security Options
-    # =========================================================================
     security_opt:
       - no-new-privileges:true
     
-    # Read-only root filesystem (optional, more secure)
-    # Uncomment if you want maximum security
-    # read_only: true
-    
-    # Drop unnecessary capabilities
     cap_drop:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
 
-# =============================================================================
-# Networks
-# =============================================================================
 networks:
   gridbot-net:
     driver: bridge
-    driver_opts:
-      com.docker.network.bridge.enable_ip_masquerade: "true"
-
-# =============================================================================
-# Alternative configurations for different Pi models
-# =============================================================================
-# To use a different profile, create a docker-compose.override.yml:
-#
-# For Pi 3 (1GB RAM):
-# ---
-# services:
-#   gridbot:
-#     deploy:
-#       resources:
-#         limits:
-#           cpus: '0.5'
-#           memory: 256M
-#         reservations:
-#           cpus: '0.25'
-#           memory: 96M
-#     memswap_limit: 512M
-#
-# For Pi 5 (high performance):
-# ---
-# services:
-#   gridbot:
-#     deploy:
-#       resources:
-#         limits:
-#           cpus: '1.5'
-#           memory: 768M
-#         reservations:
-#           cpus: '0.5'
-#           memory: 256M
-#     memswap_limit: 1536M
-# =============================================================================
