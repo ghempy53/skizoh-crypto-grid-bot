@@ -1,49 +1,8 @@
-# =============================================================================
-# Skizoh Grid Bot - Python Dependencies
-# Optimized for Raspberry Pi / ARM64 compatibility
-# =============================================================================
-#
-# Installation on Pi:
-#   pip install --prefer-binary -r requirements.txt
-#
-# The --prefer-binary flag uses pre-compiled wheels when available,
-# which significantly reduces build time on ARM devices.
-#
-# =============================================================================
+# Skizoh Grid Bot v15.0 - Python Dependencies
+# Optimized for Raspberry Pi / ARM64
 
 # Core trading library
-# CCXT handles all exchange API communication
-# Version 4.x has improved ARM support and async capabilities
 ccxt>=4.0.0,<5.0.0
 
-# Numerical computing
-# numpy is used for technical indicator calculations
-# Note: 1.24+ has pre-built ARM64 wheels for faster installation
+# Numerical computing (float32 optimizations)
 numpy>=1.24.0,<2.0.0
-
-# =============================================================================
-# Optional Dependencies (uncomment if needed)
-# =============================================================================
-
-# Faster HTTP requests (ccxt can use it automatically)
-# aiohttp>=3.8.0
-
-# Better async support
-# asyncio-throttle>=1.0.0
-
-# For webhook notifications (if implementing alerts)
-# requests>=2.28.0
-
-# For timezone handling
-# python-dateutil>=2.8.0
-
-# =============================================================================
-# Development Dependencies (not for production)
-# =============================================================================
-# Uncomment these for development/testing:
-#
-# pytest>=7.0.0
-# pytest-asyncio>=0.20.0
-# black>=22.0.0
-# flake8>=5.0.0
-# mypy>=1.0.0
