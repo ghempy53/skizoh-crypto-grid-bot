@@ -414,6 +414,92 @@ Check Docker resource limits. Consider:
 - Using longer `check_interval_seconds`
 - Archiving old positions
 
+### Docker build fails with IPv6 errors
+
+If you see errors like:
+```
+dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
+failed to copy: httpReadSeeker: failed open: failed to do request
+```
+
+This is an IPv6 connectivity issue. Docker is trying to reach registries over IPv6 but your network doesn't support it properly.
+
+**Solution 1: Force curl/wget to prefer IPv4 (Quick Fix)**
+```bash
+# Add IPv4 preference to curl
+echo "--ipv4" >> ~/.curlrc
+
+# Restart Docker
+sudo systemctl restart docker
+
+# Retry build
+docker compose build
+```
+
+**Solution 2: Configure Docker daemon**
+
+Edit `/etc/docker/daemon.json`:
+```bash
+sudo nano /etc/docker/daemon.json
+```
+
+Add or update:
+```json
+{
+  "ipv6": false,
+  "ip6tables": false,
+  "dns": ["8.8.8.8", "8.8.4.4"]
+}
+```
+
+Then restart Docker:
+```bash
+sudo systemctl restart docker
+```
+
+**Solution 3: Disable IPv6 at kernel level (Permanent Fix)**
+```bash
+# Edit kernel command line
+sudo nano /boot/firmware/cmdline.txt
+
+# Add to the END of the existing line (same line, space before):
+ ipv6.disable=1
+
+# IMPORTANT: Keep everything on ONE line!
+
+# Reboot
+sudo reboot
+```
+
+After reboot, verify IPv6 is disabled:
+```bash
+cat /proc/sys/net/ipv6/conf/all/disable_ipv6
+# Should return: "No such file or directory" (module not loaded)
+```
+
+**Solution 4: Clean rebuild after applying fix**
+```bash
+# Nuclear cleanup - removes ALL Docker build artifacts
+make realclean
+
+# Or manually:
+docker compose down -v --rmi all
+docker builder prune -af
+docker system prune -af --volumes
+
+# Rebuild
+docker compose build
+```
+
+**Solution 5: If all else fails, add hosts entry**
+```bash
+# Get IPv4 address for Docker's CDN
+nslookup docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com 8.8.8.8
+
+# Add to /etc/hosts (replace X.X.X.X with IP from above)
+echo "X.X.X.X docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com" | sudo tee -a /etc/hosts
+```
+
 ---
 
 ## 🎯 Performance Expectations
