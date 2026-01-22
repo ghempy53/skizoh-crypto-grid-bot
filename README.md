@@ -1,10 +1,10 @@
-# Skizoh Crypto Grid Trading Bot v2.0
+# Skizoh Crypto Grid Trading Bot v2.1
 
 A profit-optimized, Raspberry Pi-friendly cryptocurrency grid trading bot for Binance.US.
 
 ---
 
-## 🚀 What's New in v2.0
+## 🚀 What's New in v2.1
 
 ### Profit Optimizations
 
@@ -585,4 +585,4 @@ This software is for educational purposes. Cryptocurrency trading involves signi
 
 **Happy Trading! 🚀💰**
 
-*Skizoh Crypto Grid Trading Bot v2.0*
+*Skizoh Crypto Grid Trading Bot v2.1*
