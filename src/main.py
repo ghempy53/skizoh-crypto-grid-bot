@@ -135,9 +135,9 @@ def main():
             scenario = get_scenario_from_env(config_manager)
             print(f"🐳 Non-interactive mode")
             print(f"   Scenario: {scenario['name']}\n")
-        
-        # Initialize and run bot
-        bot = SmartGridTradingBot(str(config_path))
+
+        # Initialize and run bot with pre-selected scenario
+        bot = SmartGridTradingBot(str(config_path), scenario=scenario)
         bot.run()
         
     except KeyboardInterrupt:
