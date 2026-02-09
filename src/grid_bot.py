@@ -345,42 +345,54 @@ class ProfitOptimizer:
         elif adx < 15:
             optimal *= 0.9  # Tighter in ranging markets
         
-        # RSI adjustment (tighten near extremes for mean reversion)
-        if 25 < rsi < 35 or 65 < rsi < 75:
-            optimal *= 0.9  # Tighter near oversold/overbought
-        
+        # RSI adjustment: tighter spacing at mean reversion zones
+        # where grid cycles complete faster
+        if rsi < 25 or rsi > 75:
+            optimal *= 0.8  # Strong mean reversion zone - much tighter
+        elif rsi < 30 or rsi > 70:
+            optimal *= 0.85  # Oversold/overbought - tighter
+        elif 30 <= rsi < 40 or 60 < rsi <= 70:
+            optimal *= 0.92  # Mildly extended - slightly tighter
+
         return max(min_spacing, round(optimal, 3))
     
     def calculate_asymmetric_levels(self, current_price: float, num_levels: int,
                                      spacing: float, bias: Dict[str, float]) -> Tuple[List[float], List[float]]:
         """
         Calculate asymmetric buy and sell levels based on market bias.
-        
+
         In bullish conditions: more sell levels above, fewer buy levels below
         In bearish conditions: more buy levels below, fewer sell levels above
+
+        Uses cumulative progressive spacing so each successive level is 10%
+        wider than the previous gap, giving tighter density near price.
         """
         buy_weight = bias.get('buy_weight', 0.5)
-        
+
         # Calculate level distribution
         num_buys = max(1, int(num_levels * buy_weight))
         num_sells = max(1, num_levels - num_buys)
-        
-        # Generate buy levels (below current price)
+
+        # Generate buy levels (below current price) with cumulative spacing
         buy_levels = []
+        cumulative_offset = 0.0
         for i in range(1, num_buys + 1):
-            # Progressive spacing: tighter near price, wider further away
-            level_spacing = spacing * (1 + (i - 1) * 0.1)  # 10% wider each level
-            price = current_price * (1 - (i * level_spacing / 100))
+            # Each gap is 10% wider than the previous
+            gap = spacing * (1 + (i - 1) * 0.1)
+            cumulative_offset += gap
+            price = current_price * (1 - cumulative_offset / 100)
             if price > 0:
                 buy_levels.append(round(price, 2))
-        
-        # Generate sell levels (above current price)
+
+        # Generate sell levels (above current price) with cumulative spacing
         sell_levels = []
+        cumulative_offset = 0.0
         for i in range(1, num_sells + 1):
-            level_spacing = spacing * (1 + (i - 1) * 0.1)
-            price = current_price * (1 + (i * level_spacing / 100))
+            gap = spacing * (1 + (i - 1) * 0.1)
+            cumulative_offset += gap
+            price = current_price * (1 + cumulative_offset / 100)
             sell_levels.append(round(price, 2))
-        
+
         return buy_levels, sell_levels
     
     def should_wait_for_better_entry(self, current_price: float, target_price: float,
@@ -452,36 +464,37 @@ class SmartGridTradingBot:
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
     MAX_MEMORY_MB = 300  # Force GC if above this
     
-    def __init__(self, config_file: str = 'config.json'):
+    def __init__(self, config_file: str = 'config.json', scenario: Optional[Dict[str, Any]] = None):
         """Initialize the smart grid trading bot."""
         # Resolve config file path
         self.config_file_path = Path(config_file).resolve()
         self.project_root = self.config_file_path.parent.parent
         self.data_dir = self.project_root / 'data'
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.config_manager = ConfigManager(str(self.config_file_path))
         config = self.config_manager.load_config()
-        
+
         self._validate_config(config)
-        
+
         # API credentials
         self.api_key = config['api_key']
         self.api_secret = config['api_secret']
         self.symbol = config['symbol']
-        
+
         # Fee configuration
         self.fee_rate = config.get('fee_rate', self.DEFAULT_FEE_RATE)
         self.use_bnb_fees = config.get('use_bnb_for_fees', False)
         if self.use_bnb_fees:
             self.fee_rate *= 0.75  # 25% discount with BNB
             logger.info(f"Using BNB for fees: effective rate {self.fee_rate*100:.3f}%")
-        
+
         # Initialize profit optimizer
         self.profit_optimizer = ProfitOptimizer(self.fee_rate)
-        
-        # Select scenario
-        scenario = self.config_manager.select_scenario_interactive()
+
+        # Use provided scenario or prompt for selection
+        if scenario is None:
+            scenario = self.config_manager.select_scenario_interactive()
         self.load_scenario(scenario)
         
         # Initialize exchange
@@ -637,7 +650,9 @@ class SmartGridTradingBot:
         """Log a transaction for tax purposes."""
         try:
             total_value = amount * price
-            net_proceeds = total_value - fee if transaction_type == 'SELL' else total_value + fee
+            # SELL: proceeds = value received minus fee
+            # BUY: cost = value paid plus fee (negative proceeds)
+            net_proceeds = total_value - fee if transaction_type == 'SELL' else -(total_value + fee)
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             with open(self.tax_log_file, 'a', newline='') as f:
@@ -817,20 +832,46 @@ class SmartGridTradingBot:
             if abs(optimal_spacing - self.grid_spacing_percent) > 0.1:
                 logger.info(f"📊 Spacing adjusted: {self.grid_spacing_percent:.2f}% → {optimal_spacing:.2f}%")
                 self.grid_spacing_percent = optimal_spacing
-            
+
+            # Dynamic level count based on grid efficiency
+            efficiency = self.market_analyzer.calculate_grid_efficiency_score()
+            if efficiency:
+                eff_score = efficiency['score']
+                base_levels = self.grid_levels_count
+                if eff_score >= 80:
+                    # Excellent conditions: increase levels by up to 30%
+                    adjusted_levels = min(int(base_levels * 1.3), 20)
+                elif eff_score >= 60:
+                    adjusted_levels = base_levels  # Normal
+                elif eff_score >= 40:
+                    # Marginal: reduce levels to concentrate capital
+                    adjusted_levels = max(int(base_levels * 0.7), 3)
+                else:
+                    # Poor: minimal grid
+                    adjusted_levels = max(int(base_levels * 0.5), 2)
+
+                if adjusted_levels != self.grid_levels_count:
+                    logger.info(f"📊 Levels adjusted: {self.grid_levels_count} → {adjusted_levels} "
+                               f"(efficiency: {eff_score})")
+
+                effective_levels = adjusted_levels
+            else:
+                effective_levels = self.grid_levels_count
+
             # Get market bias
             bias = self.market_analyzer.should_adjust_grid_bias()
-            
-            # Calculate asymmetric levels
-            buy_prices, sell_prices = self.profit_optimizer.calculate_asymmetric_levels(
-                current_price, self.grid_levels_count, self.grid_spacing_percent, bias
-            )
-            
-            # Exposure check
+
+            # Exposure check BEFORE calculating levels so bias adjustment takes effect
             exposure = self.check_exposure_limits(current_price)
             if exposure.get('should_reduce'):
                 logger.warning(f"⚠️ High exposure ({exposure['current_exposure']:.1f}%), favoring sells")
-                bias['buy_weight'] *= 0.5
+                bias['buy_weight'] = max(0.15, bias['buy_weight'] * 0.5)
+                bias['sell_weight'] = 1.0 - bias['buy_weight']
+
+            # Calculate asymmetric levels with exposure-adjusted bias
+            buy_prices, sell_prices = self.profit_optimizer.calculate_asymmetric_levels(
+                current_price, effective_levels, self.grid_spacing_percent, bias
+            )
             
             if self.initial_investment == 0:
                 self.initial_investment = balances['quote'] + (balances['base'] * current_price)
@@ -894,25 +935,42 @@ class SmartGridTradingBot:
             return False
     
     def place_grid_orders(self):
-        """Place optimized grid orders."""
+        """Place optimized grid orders with momentum-based entry timing."""
         try:
-            market = self.exchange.market(self.symbol)
-            min_amount = market.get('limits', {}).get('amount', {}).get('min', 0.0001)
-            
+            market_info = self.exchange.market(self.symbol)
+            min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0001)
+
+            # Get momentum for entry timing (cached, low overhead)
+            momentum = 0.0
+            try:
+                macd = self.market_analyzer.calculate_macd()
+                if macd:
+                    momentum = macd.get('momentum', 0.0)
+            except Exception:
+                pass
+
+            current_price = self.grid_center_price or 0
+
             for level in self.grid_levels:
                 if level['filled'] or level.get('order_id'):
                     continue
-                
+
                 price = level['price']
                 if price <= 0:
                     continue
-                
+
+                # Skip orders where momentum suggests a better entry is coming
+                is_buy = level['type'] == 'buy'
+                if current_price > 0 and self.profit_optimizer.should_wait_for_better_entry(
+                        current_price, price, momentum, is_buy):
+                    continue
+
                 quantity = self.exchange.amount_to_precision(self.symbol, level['quantity'])
                 quantity = float(quantity)
-                
+
                 if quantity < min_amount:
                     continue
-                
+
                 try:
                     order = self.exchange.create_order(
                         symbol=self.symbol,
@@ -921,11 +979,11 @@ class SmartGridTradingBot:
                         amount=quantity,
                         price=price
                     )
-                    
+
                     level['order_id'] = order['id']
                     self.active_orders[order['id']] = {'level': level, 'order': order}
                     logger.info(f"✓ {level['type'].upper()}: {quantity:.6f} @ ${price:.2f}")
-                    
+
                 except ccxt.InsufficientFunds:
                     logger.warning(f"Insufficient funds for {level['type']} @ ${price}")
                     break
@@ -1016,33 +1074,37 @@ class SmartGridTradingBot:
         return fee
     
     def place_opposite_order(self, filled_level: Dict, fill_price: float, filled_qty: float):
-        """Place opposite order after fill."""
+        """Place opposite order after fill with dynamic profit targets."""
         try:
             if fill_price <= 0 or filled_qty <= 0:
                 return
-            
-            adjustment = self.grid_spacing_percent / 100
-            
+
             if filled_level['type'] == 'buy':
-                new_price = fill_price * (1 + adjustment)
+                # Sell at a dynamic profit target based on volatility
+                new_price = self.profit_optimizer.calculate_profit_target(
+                    fill_price, self.grid_spacing_percent,
+                    self.current_volatility, 0  # New position, age = 0
+                )
                 side = 'sell'
                 quantity = filled_qty
             else:
+                # Buy back at spacing below fill price
+                adjustment = self.grid_spacing_percent / 100
                 new_price = fill_price * (1 - adjustment)
                 side = 'buy'
                 quantity = (filled_qty * fill_price) / new_price
-            
+
             if quantity <= 0 or new_price <= 0:
                 return
-            
+
             quantity = float(self.exchange.amount_to_precision(self.symbol, quantity))
             new_price = round(new_price, 2)
-            
+
             order = self.exchange.create_order(
                 symbol=self.symbol, type='limit', side=side,
                 amount=quantity, price=new_price
             )
-            
+
             new_level = {
                 'price': new_price,
                 'quantity': quantity,
@@ -1050,11 +1112,11 @@ class SmartGridTradingBot:
                 'filled': False,
                 'order_id': order['id']
             }
-            
+
             self.grid_levels.append(new_level)
             self.active_orders[order['id']] = {'level': new_level, 'order': order}
             logger.info(f"✓ Opposite {side.upper()}: {quantity:.6f} @ ${new_price:.2f}")
-            
+
         except Exception as e:
             logger.error(f"Failed to place opposite order: {e}")
     
@@ -1101,21 +1163,22 @@ class SmartGridTradingBot:
             logger.error(f"Failed to calculate value: {e}")
             return None
     
-    def check_stop_loss(self) -> bool:
+    def check_stop_loss(self, portfolio: Optional[Dict] = None) -> bool:
         """Check stop loss conditions."""
-        portfolio = self.calculate_current_value()
-        
+        if portfolio is None:
+            portfolio = self.calculate_current_value()
+
         if portfolio:
             if portfolio['profit_percent'] < -self.stop_loss_percent:
                 logger.critical(f"⚠️ STOP LOSS: {portfolio['profit_percent']:.2f}%")
                 self.emergency_stop()
                 return False
-            
+
             if self.max_drawdown > self.stop_loss_percent * 1.5:
                 logger.critical(f"⚠️ DRAWDOWN STOP: {self.max_drawdown:.2f}%")
                 self.emergency_stop()
                 return False
-        
+
         return True
     
     def check_memory_usage(self):
@@ -1142,6 +1205,104 @@ class SmartGridTradingBot:
                 gc.collect()
                 self.last_gc_time = time.time()
     
+    def _check_scenario_switch(self):
+        """Evaluate if a scenario switch would improve profitability."""
+        self.cycles_since_scenario_check += 1
+
+        if self.cycles_since_scenario_check < self.cycles_per_scenario_check:
+            return
+
+        self.cycles_since_scenario_check = 0
+
+        # Respect minimum hold time
+        if time.time() - self.last_scenario_change < self.min_scenario_hold_time:
+            return
+
+        try:
+            market = self.get_market_conditions()
+            if not market:
+                return
+
+            volatility = market['volatility']
+            adx = market['adx']
+            rsi = market['rsi']
+
+            best_idx = None
+            best_score = 0.0
+
+            for i, scenario in enumerate(self.config_manager.scenarios):
+                score = self._score_scenario_fit(scenario, volatility, adx, rsi)
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+
+            # Track scores for stability (require consistent recommendation)
+            self.recent_scenario_scores.append(best_idx)
+            if len(self.recent_scenario_scores) > 3:
+                self.recent_scenario_scores = self.recent_scenario_scores[-3:]
+
+            # Only switch if the same scenario is recommended consistently
+            # and confidence exceeds threshold
+            if (best_idx is not None
+                    and best_idx != self.current_scenario_index
+                    and best_score >= self.scenario_change_threshold
+                    and len(self.recent_scenario_scores) >= 2
+                    and all(s == best_idx for s in self.recent_scenario_scores[-2:])):
+
+                new_scenario = self.config_manager.scenarios[best_idx]
+                old_name = self.scenario_name
+                self.load_scenario(new_scenario)
+                self.current_scenario_index = best_idx
+                self.last_scenario_change = time.time()
+                self.recent_scenario_scores.clear()
+
+                logger.info(f"🔄 SCENARIO CHANGE: {old_name} → {new_scenario['name']} "
+                           f"(confidence: {best_score:.0%})")
+
+                # Reposition grid with new scenario parameters
+                self.calculate_grid_levels(reposition=True)
+
+        except Exception as e:
+            logger.warning(f"Scenario check failed: {e}")
+
+    def _score_scenario_fit(self, scenario: Dict[str, Any], volatility: float,
+                            adx: float, rsi: float) -> float:
+        """Score how well a scenario fits current market conditions (0-1)."""
+        score = 0.5
+        name = scenario['name'].lower()
+        spacing = scenario['grid_spacing_percent']
+
+        # Low volatility market
+        if volatility < 1.5:
+            if 'low volatility' in name or spacing <= 0.6:
+                score += 0.3
+            elif spacing > 1.5:
+                score -= 0.2
+
+        # High volatility market
+        elif volatility > 5:
+            if 'high volatility' in name or spacing >= 1.5:
+                score += 0.3
+            elif 'scalping' in name or spacing < 0.6:
+                score -= 0.3
+
+        # Ranging market (ideal for grid)
+        if adx < 20:
+            if 'mean reversion' in name or 'balanced' in name:
+                score += 0.2
+        elif adx > 35:
+            if 'conservative' in name or spacing >= 1.5:
+                score += 0.2
+            elif 'aggressive' in name or 'scalping' in name:
+                score -= 0.3
+
+        # RSI extremes favor mean reversion
+        if (rsi < 30 or rsi > 70) and adx < 25:
+            if 'mean reversion' in name:
+                score += 0.2
+
+        return max(0.0, min(1.0, score))
+
     def cancel_all_orders(self):
         """Cancel all active orders."""
         try:
@@ -1219,11 +1380,11 @@ class SmartGridTradingBot:
         try:
             while True:
                 logger.info("--- 🔄 Cycle ---")
-                
+
                 # Memory check (Pi optimization)
                 self.check_memory_usage()
-                
-                # Get current price
+
+                # Get current price (single fetch per cycle)
                 try:
                     current_price = self.exchange.fetch_ticker(self.symbol)['last']
                     if not current_price:
@@ -1232,27 +1393,29 @@ class SmartGridTradingBot:
                 except Exception:
                     time.sleep(self.check_interval)
                     continue
-                
+
                 # Trend filter
                 if not self.check_trend_filter():
                     time.sleep(self.check_interval)
                     continue
-                
+
                 # Reposition if needed
                 if self.should_reposition_grid(current_price):
                     self.calculate_grid_levels(reposition=True)
-                
-                # Safety checks
-                if not self.check_stop_loss():
-                    break
-                
+
                 # Execute trading
                 self.place_grid_orders()
                 self.check_orders()
-                
-                # Status
-                self.calculate_current_value()
-                
+
+                # Status + stop-loss (single portfolio calc, reused for both)
+                portfolio = self.calculate_current_value()
+                if not self.check_stop_loss(portfolio):
+                    break
+
+                # Dynamic scenario switching
+                if self.enable_dynamic_scenarios:
+                    self._check_scenario_switch()
+
                 logger.info(f"💤 Sleep {self.check_interval}s\n")
                 time.sleep(self.check_interval)
         

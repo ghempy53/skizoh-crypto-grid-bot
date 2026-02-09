@@ -406,47 +406,59 @@ class MarketAnalyzer:
     def calculate_mean_reversion_probability(self) -> Optional[Dict[str, Any]]:
         """
         Calculate probability of mean reversion.
-        
+
         Key metric for grid trading profitability.
         Higher probability = better grid trading conditions.
+
+        Uses proportional RSI distance, continuous Bollinger position,
+        and ADX-based trend penalty for higher accuracy.
         """
         cache_key = "mean_reversion"
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
-        
+
         try:
             rsi = self.calculate_rsi_wilder()
             bb = self.calculate_bollinger_bands()
             adx = self.calculate_adx()
-            
+
             if not all([rsi, bb, adx]):
                 return None
-            
+
             probability = 0.5  # Base 50%
-            
-            # RSI contribution (oversold/overbought = higher reversion prob)
-            if rsi < 30:
-                probability += 0.2 * (30 - rsi) / 30  # Up to +20%
-            elif rsi > 70:
-                probability += 0.2 * (rsi - 70) / 30  # Up to +20%
-            
-            # BB contribution (near bands = higher reversion prob)
+
+            # RSI contribution: proportional to distance from midline
+            # RSI 50 = no signal, RSI 20 = strong buy reversion, RSI 80 = strong sell reversion
+            rsi_distance = abs(rsi - 50) / 50  # 0 at midline, 1 at extremes
+            if rsi < 30 or rsi > 70:
+                # Strong mean reversion zone: up to +25%
+                probability += 0.25 * rsi_distance
+            elif rsi < 40 or rsi > 60:
+                # Mild extension: up to +10%
+                probability += 0.10 * rsi_distance
+
+            # BB contribution: continuous scale based on distance from bands
             bb_pos = bb['price_position']
-            if bb_pos < 0.2:
-                probability += 0.15  # Near lower band
-            elif bb_pos > 0.8:
-                probability += 0.15  # Near upper band
-            
-            # ADX contribution (low ADX = ranging = higher reversion)
+            bb_distance = abs(bb_pos - 0.5) * 2  # 0 at middle, 1 at bands
+            if bb_pos < 0.15 or bb_pos > 0.85:
+                probability += 0.18 * bb_distance  # Very near band
+            elif bb_pos < 0.25 or bb_pos > 0.75:
+                probability += 0.12 * bb_distance  # Near band
+
+            # ADX contribution: ranging markets mean-revert, trends don't
             adx_val = adx['adx']
-            if adx_val < 20:
-                probability += 0.15
+            if adx_val < 15:
+                probability += 0.18  # Very weak trend = strong reversion
+            elif adx_val < 20:
+                probability += 0.12
             elif adx_val < 25:
-                probability += 0.05
+                probability += 0.04
+            elif adx_val > 35:
+                probability -= 0.15  # Strong trend = weak reversion
             elif adx_val > 40:
-                probability -= 0.2  # Strong trend = low reversion
-            
+                probability -= 0.25  # Very strong trend
+
             result = {
                 'probability': min(0.95, max(0.1, probability)),
                 'rsi_contribution': rsi,
@@ -454,7 +466,7 @@ class MarketAnalyzer:
                 'adx_factor': adx_val,
                 'favorable': probability > 0.6
             }
-            
+
             self._set_cached(cache_key, result)
             return result
         except Exception as e:
