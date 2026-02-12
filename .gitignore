@@ -24,3 +24,6 @@ priv_data.txt
 
 #Ignore data directory
 data/
+
+# Ignore backups (may contain API keys)
+backups/
