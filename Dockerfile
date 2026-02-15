@@ -84,7 +84,7 @@ RUN chmod +x /app/docker-entrypoint.sh
 
 USER gridbot
 
-VOLUME ["/app/data", "/app/src/priv"]
+VOLUME ["/app/data"]
 
 # Health check (reduced frequency for Pi)
 HEALTHCHECK --interval=180s --timeout=20s --start-period=90s --retries=2 \
