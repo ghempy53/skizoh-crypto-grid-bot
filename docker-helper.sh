@@ -712,10 +712,10 @@ cmd_update() {
     git stash 2>/dev/null || true
 
     print_step "Pulling latest code..."
-    if ! git pull --rebase origin master; then
+    if ! git pull --rebase origin main; then
         print_warning "Git pull failed. Trying to resolve..."
         git fetch origin
-        git reset --hard origin/master
+        git reset --hard origin/main
     fi
 
     git stash pop 2>/dev/null || true
@@ -854,10 +854,10 @@ cmd_diagnose() {
         ((issues++))
     fi
 
-    if ping -c 1 -W 3 registry.npmjs.org > /dev/null 2>&1; then
-        print_success "Package registry reachable"
+    if ping -c 1 -W 3 pypi.org > /dev/null 2>&1; then
+        print_success "Python package registry reachable"
     else
-        print_warning "Cannot reach package registry"
+        print_warning "Cannot reach Python package registry (pypi.org)"
     fi
 
     # DNS check
