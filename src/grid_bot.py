@@ -467,8 +467,9 @@ class SmartGridTradingBot:
     def __init__(self, config_file: str = 'config.json', scenario: Optional[Dict[str, Any]] = None):
         """Initialize the smart grid trading bot."""
         # Resolve config file path
+        # Config lives at <project>/src/priv/config.json, so project root is 3 levels up
         self.config_file_path = Path(config_file).resolve()
-        self.project_root = self.config_file_path.parent.parent
+        self.project_root = self.config_file_path.parent.parent.parent
         self.data_dir = self.project_root / 'data'
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

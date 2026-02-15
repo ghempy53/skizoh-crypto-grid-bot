@@ -22,6 +22,10 @@ venv/
 # Ignore private key data
 priv_data.txt
 
+# Ignore config files with API keys
+config.json
+src/priv/config.json
+
 #Ignore data directory
 data/
 

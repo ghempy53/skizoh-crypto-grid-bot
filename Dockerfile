@@ -88,7 +88,7 @@ VOLUME ["/app/data", "/app/src/priv"]
 
 # Health check (reduced frequency for Pi)
 HEALTHCHECK --interval=180s --timeout=20s --start-period=90s --retries=2 \
-    CMD python3 -c "import ccxt; print('ok')" || exit 1
+    CMD python3 -c "import ccxt; import numpy; print('ok')" || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
 CMD ["run"]
