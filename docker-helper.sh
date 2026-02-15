@@ -25,7 +25,7 @@ IMAGE_NAME="skizoh-grid-bot"
 IMAGE_TAG="2.0"
 COMPOSE_FILE="docker-compose.yml"
 SERVICE_NAME="gridbot"
-CONFIG_FILE="./config.json"
+CONFIG_FILE="./src/priv/config.json"
 CONFIG_TEMPLATE="./src/priv/config.json.template"
 DATA_DIR="./data"
 BACKUP_DIR="./backups"
@@ -582,10 +582,6 @@ cmd_backup() {
     fi
     if [[ -f "$CONFIG_FILE" ]]; then
         paths+=("$CONFIG_FILE")
-        print_success "Including config.json"
-    fi
-    if [[ -f "./src/priv/config.json" ]]; then
-        paths+=("./src/priv/config.json")
         print_success "Including src/priv/config.json"
     fi
     if [[ -f "$COMPOSE_FILE" ]]; then
