@@ -34,8 +34,8 @@ services:
       - GRIDBOT_NONINTERACTIVE=${GRIDBOT_NONINTERACTIVE:-false}
     
     volumes:
-      # Config file (read-only)
-      - ./config.json:/app/src/priv/config.json:ro
+      # Config file (read-only) - lives at src/priv/config.json
+      - ./src/priv/config.json:/app/src/priv/config.json:ro
       # Data persistence
       - ./data:/app/data
     
