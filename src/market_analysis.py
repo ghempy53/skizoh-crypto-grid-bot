@@ -379,7 +379,7 @@ class MarketAnalyzer:
             closes = ohlcv[:, 4]
             
             sma = np.mean(closes[-period:])
-            std = np.std(closes[-period:])
+            std = np.std(closes[-period:], ddof=1)
             
             upper = sma + (std_dev * std)
             lower = sma - (std_dev * std)

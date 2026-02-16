@@ -300,17 +300,20 @@ class PositionTracker:
 class ProfitOptimizer:
     """
     Profit optimization strategies for grid trading.
-    
+
     Features:
     - Asymmetric grid placement
     - Dynamic spacing based on volatility
     - Momentum-based entry timing
     - Profit zone acceleration
+    - ETH accumulation bias (buy-back more ETH than sold)
     """
-    
+
     def __init__(self, fee_rate: float = 0.001):
         self.fee_rate = fee_rate
         self.min_profit_multiplier = 2.5  # Minimum profit vs fees
+        # ETH accumulation: tighter buy-back spacing means more ETH purchased per cycle
+        self.accumulation_rebuy_tightening = 0.15  # Buy back 15% closer than sell spacing
         
     def calculate_optimal_spacing(self, base_spacing: float, volatility: float,
                                    adx: float, rsi: float) -> float:
@@ -459,7 +462,8 @@ class SmartGridTradingBot:
     REPOSITION_THRESHOLD_MULTIPLIER = 2.0  # Reduced for more responsive repositioning
     MIN_GRID_UPDATE_INTERVAL = 300  # 5 minutes (reduced from 10)
     FEE_SAFETY_FACTOR = 2.5
-    
+    STALE_ORDER_SECONDS = 3600  # Cancel unfilled orders older than 1 hour
+
     # Pi-specific settings
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
     MAX_MEMORY_MB = 300  # Force GC if above this
@@ -537,6 +541,9 @@ class SmartGridTradingBot:
         self.last_grid_update = time.time()
         self.current_volatility = 0.0
         self.current_adx = 0.0
+        self._last_market_conditions: Optional[Dict[str, Any]] = None
+        self._last_market_conditions_time = 0.0
+        self._market_conditions_ttl = 30  # reuse for 30s
         
         # Performance tracking
         self.start_time: Optional[datetime] = None
@@ -547,6 +554,10 @@ class SmartGridTradingBot:
         # Trend pause state
         self.trend_pause_until = 0.0
         
+        # ETH accumulation tracking
+        self.initial_eth_balance: Optional[float] = None
+        self.eth_high_watermark = 0.0
+
         # Memory management (Pi optimization)
         self.cycle_count = 0
         self.last_gc_time = time.time()
@@ -710,34 +721,45 @@ class SmartGridTradingBot:
             'total_value': total_value
         }
     
-    def get_market_conditions(self) -> Dict[str, Any]:
-        """Get comprehensive market conditions for decision making."""
+    def get_market_conditions(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """Get comprehensive market conditions for decision making.
+
+        Results are cached for ``_market_conditions_ttl`` seconds so that
+        multiple callers in the same cycle (main loop, scenario checker) share
+        the same data without redundant API calls.
+        """
+        now = time.time()
+        if (not force_refresh
+                and self._last_market_conditions is not None
+                and now - self._last_market_conditions_time < self._market_conditions_ttl):
+            return self._last_market_conditions
+
         try:
             ticker = self.exchange.fetch_ticker(self.symbol)
             current_price = ticker['last']
             high_24h = ticker['high']
             low_24h = ticker['low']
-            
+
             if current_price <= 0:
                 return None
-            
+
             volatility = ((high_24h - low_24h) / current_price) * 100
-            
+
             rsi = self.market_analyzer.calculate_rsi_wilder() or 50
             adx_data = self.market_analyzer.calculate_adx()
             adx = adx_data['adx'] if adx_data else 20
             macd = self.market_analyzer.calculate_macd()
             bb = self.market_analyzer.calculate_bollinger_bands()
-            
+
             # Calculate momentum
             momentum = 0
             if macd:
                 momentum = macd['histogram'] * 10  # Scale histogram
-            
+
             self.current_volatility = volatility
             self.current_adx = adx
-            
-            return {
+
+            result = {
                 'price': current_price,
                 'volatility': volatility,
                 'rsi': rsi,
@@ -749,6 +771,9 @@ class SmartGridTradingBot:
                 'high_24h': high_24h,
                 'low_24h': low_24h
             }
+            self._last_market_conditions = result
+            self._last_market_conditions_time = now
+            return result
         except Exception as e:
             logger.error(f"Failed to get market conditions: {e}")
             return None
@@ -909,14 +934,19 @@ class SmartGridTradingBot:
                         'order_id': None
                     })
             
-            # Create sell levels
+            # Create sell levels (only above average cost basis to protect ETH)
             crypto_available = balances['base']
             num_sells = len(sell_prices)
+            avg_cost = self.position_tracker.get_average_cost()
             if num_sells > 0 and crypto_available > 0:
                 max_single_crypto = max_single_usdt / current_price
                 crypto_per_sell = min(crypto_available / num_sells, max_single_crypto)
-                
+
                 for price in sell_prices:
+                    # Never sell below cost basis — protects ETH from being sold at a loss
+                    if avg_cost > 0 and price < avg_cost * (1 + self.fee_rate * 2):
+                        logger.debug(f"Skipping sell @ ${price:.2f} — below cost basis ${avg_cost:.2f}")
+                        continue
                     if crypto_per_sell > 0:
                         self.grid_levels.append({
                             'price': price,
@@ -982,7 +1012,9 @@ class SmartGridTradingBot:
                     )
 
                     level['order_id'] = order['id']
-                    self.active_orders[order['id']] = {'level': level, 'order': order}
+                    self.active_orders[order['id']] = {
+                        'level': level, 'order': order, 'placed_at': time.time()
+                    }
                     logger.info(f"✓ {level['type'].upper()}: {quantity:.6f} @ ${price:.2f}")
 
                 except ccxt.InsufficientFunds:
@@ -994,20 +1026,32 @@ class SmartGridTradingBot:
             logger.error(f"Failed to place orders: {e}")
     
     def check_orders(self):
-        """Check and process filled orders."""
+        """Check and process filled orders, including partial fills."""
         for order_id in list(self.active_orders.keys()):
             try:
                 order_info = self.exchange.fetch_order(order_id, self.symbol)
                 status = order_info['status']
-                
+
                 if status == 'closed':
                     self._handle_filled_order(order_id, order_info)
                 elif status == 'canceled':
-                    level = self.active_orders[order_id]['level']
-                    level['order_id'] = None
-                    del self.active_orders[order_id]
+                    # Handle cancellation with partial fill: process whatever was filled
+                    filled_amount = float(order_info.get('filled', 0))
+                    if filled_amount > 0:
+                        logger.info(f"Processing partial fill ({filled_amount:.6f}) from canceled order")
+                        self._handle_filled_order(order_id, order_info)
+                    else:
+                        level = self.active_orders[order_id]['level']
+                        level['order_id'] = None
+                        del self.active_orders[order_id]
             except Exception as e:
                 logger.warning(f"Error checking order {order_id}: {e}")
+
+        # Prune filled levels that have no active order to prevent unbounded growth
+        self.grid_levels = [
+            level for level in self.grid_levels
+            if not level['filled'] or level.get('order_id')
+        ]
     
     def _handle_filled_order(self, order_id: str, order_info: Dict):
         """Handle filled order with profit tracking."""
@@ -1089,11 +1133,21 @@ class SmartGridTradingBot:
                 side = 'sell'
                 quantity = filled_qty
             else:
-                # Buy back at spacing below fill price
-                adjustment = self.grid_spacing_percent / 100
+                # ETH accumulation: use tighter buy-back spacing so we re-enter
+                # closer to the sell price, acquiring more ETH per cycle.
+                # The tighter spacing still exceeds the fee threshold.
+                tightening = self.profit_optimizer.accumulation_rebuy_tightening
+                min_spacing_pct = (2 * self.fee_rate * 100) * self.FEE_SAFETY_FACTOR
+                rebuy_spacing = max(
+                    min_spacing_pct,
+                    self.grid_spacing_percent * (1 - tightening)
+                )
+                adjustment = rebuy_spacing / 100
                 new_price = fill_price * (1 - adjustment)
                 side = 'buy'
-                quantity = (filled_qty * fill_price) / new_price
+                # Account for the fee paid on the sell to avoid over-allocating USDT
+                net_proceeds = filled_qty * fill_price * (1 - self.fee_rate)
+                quantity = net_proceeds / new_price
 
             if quantity <= 0 or new_price <= 0:
                 return
@@ -1115,20 +1169,23 @@ class SmartGridTradingBot:
             }
 
             self.grid_levels.append(new_level)
-            self.active_orders[order['id']] = {'level': new_level, 'order': order}
+            self.active_orders[order['id']] = {
+                'level': new_level, 'order': order, 'placed_at': time.time()
+            }
             logger.info(f"✓ Opposite {side.upper()}: {quantity:.6f} @ ${new_price:.2f}")
 
         except Exception as e:
             logger.error(f"Failed to place opposite order: {e}")
     
-    def calculate_current_value(self) -> Optional[Dict]:
+    def calculate_current_value(self, current_price: float = 0) -> Optional[Dict]:
         """Calculate portfolio value with metrics."""
         try:
             balances = self.get_balances()
             if not balances:
                 return None
-            
-            current_price = self.exchange.fetch_ticker(self.symbol)['last']
+
+            if current_price <= 0:
+                current_price = self.exchange.fetch_ticker(self.symbol)['last']
             if not current_price:
                 return None
             
@@ -1143,21 +1200,36 @@ class SmartGridTradingBot:
                 if drawdown > self.max_drawdown:
                     self.max_drawdown = drawdown
             
+            # Track ETH accumulation
+            eth_balance = balances['base_total']
+            if self.initial_eth_balance is None:
+                self.initial_eth_balance = eth_balance
+                self.eth_high_watermark = eth_balance
+            if eth_balance > self.eth_high_watermark:
+                self.eth_high_watermark = eth_balance
+            eth_change = eth_balance - self.initial_eth_balance
+
             if self.initial_investment > 0:
                 total_pnl = total_value - self.initial_investment
                 pnl_percent = (total_pnl / self.initial_investment) * 100
-                
+
                 logger.info(
                     f"📊 Value: ${total_value:.2f} | P&L: ${total_pnl:.2f} ({pnl_percent:+.2f}%) | "
                     f"Cycles: {self.cycles_completed} | DD: {self.max_drawdown:.1f}%"
                 )
-                
+                logger.info(
+                    f"🪙 ETH: {eth_balance:.6f} ({eth_change:+.6f} since start) | "
+                    f"HWM: {self.eth_high_watermark:.6f}"
+                )
+
                 return {
                     'total_value': total_value,
                     'profit': total_pnl,
                     'profit_percent': pnl_percent,
                     'realized_pnl': position['realized_pnl'],
-                    'max_drawdown': self.max_drawdown
+                    'max_drawdown': self.max_drawdown,
+                    'eth_balance': eth_balance,
+                    'eth_change': eth_change
                 }
             return None
         except Exception as e:
@@ -1304,6 +1376,96 @@ class SmartGridTradingBot:
 
         return max(0.0, min(1.0, score))
 
+    def reinvest_profits_to_eth(self, current_price: float):
+        """Reinvest excess USDT profits into ETH to grow ETH holdings.
+
+        Strategy: once realized profits exceed a threshold, use a portion
+        to buy ETH at market price. This converts grid-trading USDT profit
+        directly into the target asset.
+        """
+        if current_price <= 0 or self.initial_investment <= 0:
+            return
+
+        realized = self.position_tracker.realized_pnl
+        # Only reinvest when realized profit > 2% of initial investment
+        profit_threshold = self.initial_investment * 0.02
+        if realized < profit_threshold:
+            return
+
+        # Reinvest 30% of realized profits beyond the threshold
+        reinvest_amount = (realized - profit_threshold) * 0.30
+        if reinvest_amount < self.min_order_size_usdt:
+            return
+
+        # Check we have enough free USDT
+        balances = self.get_balances()
+        if not balances or balances['quote'] < reinvest_amount:
+            return
+
+        try:
+            quantity = reinvest_amount / current_price
+            quantity = float(self.exchange.amount_to_precision(self.symbol, quantity))
+            market_info = self.exchange.market(self.symbol)
+            min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0001)
+
+            if quantity < min_amount:
+                return
+
+            order = self.exchange.create_order(
+                symbol=self.symbol, type='market',
+                side='buy', amount=quantity
+            )
+
+            fill_price = float(order.get('average') or order.get('price') or current_price)
+            fee = self._calculate_fee(order, quantity, fill_price)
+            self.position_tracker.add_position(quantity, fill_price, fee)
+
+            base_currency = self.symbol.split('/')[0]
+            self.log_tax_transaction(
+                'BUY', base_currency, quantity, fill_price, fee,
+                order.get('id', 'reinvest'),
+                cost_basis=quantity * fill_price + fee,
+                notes='Profit reinvestment into ETH'
+            )
+
+            # Reset realized P&L tracking so we don't reinvest the same profit twice
+            self.position_tracker.realized_pnl -= reinvest_amount
+
+            logger.info(
+                f"💎 REINVESTED ${reinvest_amount:.2f} profit → "
+                f"{quantity:.6f} {base_currency} @ ${fill_price:.2f}"
+            )
+        except ccxt.InsufficientFunds:
+            logger.debug("Insufficient funds for profit reinvestment")
+        except Exception as e:
+            logger.warning(f"Profit reinvestment failed: {e}")
+
+    def cancel_stale_orders(self):
+        """Cancel orders that have been open too long without filling.
+
+        Stale orders tie up capital that could be redeployed at current prices.
+        """
+        now = time.time()
+        stale_ids = []
+        for order_id, info in self.active_orders.items():
+            placed_at = info.get('placed_at', now)
+            if now - placed_at > self.STALE_ORDER_SECONDS:
+                stale_ids.append(order_id)
+
+        for order_id in stale_ids:
+            try:
+                self.exchange.cancel_order(order_id, self.symbol)
+                level = self.active_orders[order_id]['level']
+                level['order_id'] = None
+                level['filled'] = False
+                del self.active_orders[order_id]
+                logger.info(f"♻️ Canceled stale order {order_id}")
+            except Exception as e:
+                logger.warning(f"Could not cancel stale order {order_id}: {e}")
+
+        if stale_ids:
+            logger.info(f"♻️ Canceled {len(stale_ids)} stale orders — capital unlocked for redeployment")
+
     def cancel_all_orders(self):
         """Cancel all active orders."""
         try:
@@ -1325,21 +1487,35 @@ class SmartGridTradingBot:
     def emergency_stop(self):
         """Emergency stop with cleanup."""
         logger.critical("🛑 EMERGENCY STOP")
-        
+
         try:
             self.cancel_all_orders()
-            
+
             balances = self.get_balances()
             if balances and balances['base'] > 0:
                 quantity = self.exchange.amount_to_precision(self.symbol, balances['base'])
-                if float(quantity) > 0:
-                    self.exchange.create_order(
+                qty_float = float(quantity)
+                if qty_float > 0:
+                    order = self.exchange.create_order(
                         symbol=self.symbol, type='market',
                         side='sell', amount=quantity
                     )
+                    # Track the emergency sell in position tracker and tax log
+                    sell_price = float(order.get('average') or order.get('price', 0))
+                    if sell_price > 0:
+                        fee = self._calculate_fee(order, qty_float, sell_price)
+                        result = self.position_tracker.close_position(qty_float, sell_price, fee)
+                        base_currency = self.symbol.split('/')[0]
+                        self.log_tax_transaction(
+                            'SELL', base_currency, qty_float, sell_price, fee,
+                            order.get('id', 'emergency'),
+                            cost_basis=result['cost_basis'],
+                            realized_pnl=result['pnl'],
+                            notes='Emergency stop sell'
+                        )
         except Exception as e:
             logger.error(f"Emergency stop error: {e}")
-        
+
         self._print_final_summary()
     
     def _print_final_summary(self):
@@ -1359,6 +1535,12 @@ class SmartGridTradingBot:
             logger.info(f"Realized P&L: ${position['realized_pnl']:.2f}")
             logger.info(f"Total fees: ${position['total_fees']:.2f}")
             logger.info(f"Max drawdown: {self.max_drawdown:.2f}%")
+            if self.initial_eth_balance is not None:
+                balances = self.get_balances()
+                if balances:
+                    eth_now = balances['base_total']
+                    eth_change = eth_now - self.initial_eth_balance
+                    logger.info(f"ETH: {eth_now:.6f} ({eth_change:+.6f} since start)")
             logger.info("=" * 60)
         except Exception:
             pass
@@ -1405,13 +1587,18 @@ class SmartGridTradingBot:
                     self.calculate_grid_levels(reposition=True)
 
                 # Execute trading
+                self.cancel_stale_orders()
                 self.place_grid_orders()
                 self.check_orders()
 
-                # Status + stop-loss (single portfolio calc, reused for both)
-                portfolio = self.calculate_current_value()
+                # Status + stop-loss (reuse already-fetched price)
+                portfolio = self.calculate_current_value(current_price)
                 if not self.check_stop_loss(portfolio):
                     break
+
+                # Reinvest USDT profits into ETH periodically
+                if self.cycle_count % 10 == 0:
+                    self.reinvest_profits_to_eth(current_price)
 
                 # Dynamic scenario switching
                 if self.enable_dynamic_scenarios:
