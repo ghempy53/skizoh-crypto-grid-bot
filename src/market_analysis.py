@@ -448,16 +448,16 @@ class MarketAnalyzer:
 
             # ADX contribution: ranging markets mean-revert, trends don't
             adx_val = adx['adx']
-            if adx_val < 15:
+            if adx_val > 40:
+                probability -= 0.25  # Very strong trend
+            elif adx_val > 35:
+                probability -= 0.15  # Strong trend = weak reversion
+            elif adx_val < 15:
                 probability += 0.18  # Very weak trend = strong reversion
             elif adx_val < 20:
                 probability += 0.12
             elif adx_val < 25:
                 probability += 0.04
-            elif adx_val > 35:
-                probability -= 0.15  # Strong trend = weak reversion
-            elif adx_val > 40:
-                probability -= 0.25  # Very strong trend
 
             result = {
                 'probability': min(0.95, max(0.1, probability)),
