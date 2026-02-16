@@ -25,24 +25,70 @@ print_banner() {
 
 check_config() {
     CONFIG_FILE="/app/src/priv/config.json"
-    
-    if [ ! -f "$CONFIG_FILE" ]; then
+    CONFIG_TEMPLATE="/app/src/priv/config.json.template"
+
+    # Check if config file exists (Docker may create an empty dir for missing bind mounts)
+    if [ ! -f "$CONFIG_FILE" ] || [ -d "$CONFIG_FILE" ]; then
         echo -e "${RED}✗${NC} Config not found: $CONFIG_FILE"
-        echo "  Mount: -v /path/to/config.json:/app/src/priv/config.json"
+        echo ""
+        if [ -f "$CONFIG_TEMPLATE" ]; then
+            echo "  Your config.json is missing. Create it from the template:"
+            echo ""
+            echo "    cp src/priv/config.json.template src/priv/config.json"
+            echo "    nano src/priv/config.json   # Add your Binance API keys"
+            echo "    chmod 600 src/priv/config.json"
+            echo ""
+            echo "  Then restart: ./docker-helper.sh restart"
+        else
+            echo "  Mount your config: -v /path/to/config.json:/app/src/priv/config.json"
+        fi
         exit 1
     fi
-    
-    if ! python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>/dev/null; then
-        echo -e "${RED}✗${NC} Invalid JSON in config"
+
+    # Check if config file is empty (happens when Docker bind-mounts a missing file)
+    if [ ! -s "$CONFIG_FILE" ]; then
+        echo -e "${RED}✗${NC} Config file is empty: $CONFIG_FILE"
+        echo ""
+        echo "  This usually happens when Docker creates an empty file because"
+        echo "  config.json didn't exist before the container started."
+        echo ""
+        echo "  Fix:"
+        echo "    1. Stop the bot:  ./docker-helper.sh stop"
+        echo "    2. Remove the empty file:  rm src/priv/config.json"
+        echo "    3. Create from template:   cp src/priv/config.json.template src/priv/config.json"
+        echo "    4. Add your API keys:      nano src/priv/config.json"
+        echo "    5. Secure it:              chmod 600 src/priv/config.json"
+        echo "    6. Start the bot:          ./docker-helper.sh start"
         exit 1
     fi
-    
+
+    # Validate JSON syntax with helpful error details
+    JSON_ERROR=$(python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>&1)
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗${NC} Invalid JSON in config: $CONFIG_FILE"
+        echo ""
+        echo "  Parse error: $JSON_ERROR"
+        echo ""
+        echo "  Common issues:"
+        echo "    - Trailing commas after the last item in a list/object"
+        echo "    - Missing quotes around keys or string values"
+        echo "    - Comments (JSON doesn't support // or /* */ comments)"
+        echo ""
+        echo "  Validate online: https://jsonlint.com/"
+        exit 1
+    fi
+
     API_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('api_key', ''))" 2>/dev/null)
     if [ "$API_KEY" = "YOUR_BINANCE_US_API_KEY" ] || [ -z "$API_KEY" ]; then
-        echo -e "${RED}✗${NC} API key not configured"
+        echo -e "${RED}✗${NC} API key not configured in $CONFIG_FILE"
+        echo ""
+        echo "  Edit the config and replace the placeholder API key/secret"
+        echo "  with your actual Binance.US API credentials."
+        echo ""
+        echo "    nano src/priv/config.json"
         exit 1
     fi
-    
+
     echo -e "${GREEN}✓${NC} Config validated"
 }
 

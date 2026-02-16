@@ -109,13 +109,23 @@ validate_config() {
     local errors=0
 
     # Check config file exists
-    if [[ ! -f "$CONFIG_FILE" ]]; then
+    if [[ ! -f "$CONFIG_FILE" ]] || [[ -d "$CONFIG_FILE" ]]; then
         print_error "Config file not found: $CONFIG_FILE"
         if [[ -f "$CONFIG_TEMPLATE" ]]; then
             echo "  Create from template:"
             echo "    cp $CONFIG_TEMPLATE $CONFIG_FILE"
             echo "    chmod 600 $CONFIG_FILE"
             echo "    nano $CONFIG_FILE  # Add your API keys"
+        fi
+        return 1
+    fi
+
+    # Check if config file is empty (Docker bind mount of missing file creates empty file)
+    if [[ ! -s "$CONFIG_FILE" ]]; then
+        print_error "Config file is empty: $CONFIG_FILE"
+        echo "  This usually happens when Docker auto-creates the file."
+        if [[ -f "$CONFIG_TEMPLATE" ]]; then
+            echo "  Fix: cp $CONFIG_TEMPLATE $CONFIG_FILE && chmod 600 $CONFIG_FILE"
         fi
         return 1
     fi
@@ -346,6 +356,49 @@ cmd_build_verbose() {
 cmd_start() {
     print_header
     print_section "Starting Grid Bot"
+
+    # Auto-create config from template if missing
+    if [[ ! -f "$CONFIG_FILE" || -d "$CONFIG_FILE" ]]; then
+        if [[ -d "$CONFIG_FILE" ]]; then
+            # Docker may have created a directory for the missing bind mount
+            print_warning "Removing empty directory at $CONFIG_FILE (created by Docker)"
+            rmdir "$CONFIG_FILE" 2>/dev/null || rm -rf "$CONFIG_FILE"
+        fi
+
+        if [[ -f "$CONFIG_TEMPLATE" ]]; then
+            print_info "Config file not found. Creating from template..."
+            cp "$CONFIG_TEMPLATE" "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"
+            print_success "Created $CONFIG_FILE from template"
+            echo ""
+            print_warning "You MUST edit the config with your Binance.US API keys before the bot will work:"
+            echo ""
+            echo "    nano $CONFIG_FILE"
+            echo ""
+            echo "  Replace these placeholders:"
+            echo "    YOUR_BINANCE_US_API_KEY    -> your actual API key"
+            echo "    YOUR_BINANCE_US_API_SECRET -> your actual API secret"
+            echo ""
+            exit 1
+        fi
+    fi
+
+    # Handle empty config file (created by Docker bind mount of missing file)
+    if [[ -f "$CONFIG_FILE" && ! -s "$CONFIG_FILE" ]]; then
+        print_warning "Config file is empty (likely auto-created by Docker)."
+        if [[ -f "$CONFIG_TEMPLATE" ]]; then
+            print_info "Replacing with template..."
+            cp "$CONFIG_TEMPLATE" "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"
+            print_success "Replaced empty config with template"
+            echo ""
+            print_warning "You MUST edit the config with your Binance.US API keys before the bot will work:"
+            echo ""
+            echo "    nano $CONFIG_FILE"
+            echo ""
+            exit 1
+        fi
+    fi
 
     if ! validate_config; then
         print_error "Cannot start without proper configuration."
