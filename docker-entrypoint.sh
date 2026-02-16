@@ -62,9 +62,29 @@ check_config() {
         exit 1
     fi
 
+    # Check if config file is readable by this user (catches bind-mount permission issues)
+    if [ ! -r "$CONFIG_FILE" ]; then
+        echo -e "${RED}✗${NC} Config file not readable: $CONFIG_FILE"
+        echo ""
+        echo "  The container user ($(whoami), UID $(id -u)) cannot read the"
+        echo "  bind-mounted config file. This is a file permission mismatch"
+        echo "  between your host user and the container user."
+        echo ""
+        echo "  Quick fix (on the host):"
+        echo "    chmod 644 src/priv/config.json"
+        echo ""
+        echo "  Or rebuild the image (sets container UID to match Pi user):"
+        echo "    ./docker-helper.sh rebuild"
+        echo ""
+        echo "  Then recreate the container:"
+        echo "    ./docker-helper.sh stop && ./docker-helper.sh start"
+        exit 1
+    fi
+
     # Validate JSON syntax with helpful error details
-    JSON_ERROR=$(python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>&1)
-    if [ $? -ne 0 ]; then
+    # NOTE: Use 'if !' pattern so set -e does not silently kill the script
+    # before the error message can be displayed.
+    if ! JSON_ERROR=$(python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>&1); then
         echo -e "${RED}✗${NC} Invalid JSON in config: $CONFIG_FILE"
         echo ""
         echo "  Parse error: $JSON_ERROR"
@@ -78,7 +98,14 @@ check_config() {
         exit 1
     fi
 
-    API_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('api_key', ''))" 2>/dev/null)
+    # NOTE: Use 'if !' pattern here too for the same set -e reason.
+    if ! API_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('api_key', ''))" 2>&1); then
+        echo -e "${RED}✗${NC} Failed to read API key from config: $CONFIG_FILE"
+        echo ""
+        echo "  Error: $API_KEY"
+        exit 1
+    fi
+
     if [ "$API_KEY" = "YOUR_BINANCE_US_API_KEY" ] || [ -z "$API_KEY" ]; then
         echo -e "${RED}✗${NC} API key not configured in $CONFIG_FILE"
         echo ""

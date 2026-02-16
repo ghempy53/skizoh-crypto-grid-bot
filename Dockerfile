@@ -65,8 +65,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && apt-get autoremove -y
 
-# Non-root user
-RUN groupadd -r gridbot && useradd -r -g gridbot -d /app gridbot
+# Non-root user - UID/GID 1000 to match the default Raspberry Pi user,
+# so bind-mounted files (config.json) are readable without permission issues.
+RUN groupadd -g 1000 gridbot && useradd -u 1000 -g 1000 -d /app -s /bin/bash gridbot
 
 # Create directories
 RUN mkdir -p /app/src/priv /app/data && chown -R gridbot:gridbot /app
