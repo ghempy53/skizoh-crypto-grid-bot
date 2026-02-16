@@ -57,7 +57,6 @@ services:
           cpus: '0.25'
           memory: 128M
     
-    mem_swappiness: 10
     memswap_limit: 768M
     oom_kill_disable: false
     oom_score_adj: 500
