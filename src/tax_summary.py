@@ -63,7 +63,7 @@ def calculate_summary(transactions):
         'total_sell_value': total_sell_value,
         'total_fees': total_fees,
         'total_realized_pnl': total_realized_pnl,
-        'net_after_fees': total_realized_pnl - total_fees
+        'net_after_fees': total_realized_pnl
     }
 
 
