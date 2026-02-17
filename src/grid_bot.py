@@ -1130,10 +1130,21 @@ class SmartGridTradingBot:
 
             # Create buy levels
             num_buys = len(buy_prices)
+            orig_num_buys = num_buys
             if num_buys > 0:
                 usdt_per_buy = min(available_usdt / num_buys, max_single_usdt)
 
-                for price in buy_prices:
+                # Auto-reduce buy count if individual orders would be below minimum
+                while num_buys > 1 and usdt_per_buy < self.min_order_size_usdt:
+                    num_buys -= 1
+                    usdt_per_buy = min(available_usdt / num_buys, max_single_usdt)
+
+                if num_buys < orig_num_buys:
+                    logger.info(f"[Grid] Reduced buy levels: {orig_num_buys} -> {num_buys} (balance too small)")
+
+                buy_prices_used = buy_prices[:num_buys]
+
+                for price in buy_prices_used:
                     if price <= 0 or usdt_per_buy < self.min_order_size_usdt:
                         continue
 
@@ -1149,7 +1160,14 @@ class SmartGridTradingBot:
             # Create sell levels (only above average cost basis to protect ETH)
             crypto_available = balances['base']
             num_sells = len(sell_prices)
+            orig_num_sells = num_sells
             avg_cost = self.position_tracker.get_average_cost()
+
+            # Fetch exchange minimums for sell-level filtering
+            market_info_sells = self.exchange.market(self.symbol)
+            min_sell_amount = market_info_sells.get('limits', {}).get('amount', {}).get('min', 0.0001)
+            min_sell_cost = market_info_sells.get('limits', {}).get('cost', {}).get('min', 0)
+
             if num_sells > 0 and crypto_available > 0:
                 max_single_crypto = max_single_usdt / current_price
                 crypto_per_sell = min(crypto_available / num_sells, max_single_crypto)
@@ -1157,11 +1175,27 @@ class SmartGridTradingBot:
                 # v3.0: Apply heat multiplier to sell sizing too
                 crypto_per_sell *= heat_multiplier
 
-                for price in sell_prices:
+                # Auto-reduce sell count if individual orders would be too small
+                while num_sells > 1:
+                    notional = crypto_per_sell * sell_prices[0] if sell_prices else 0
+                    if crypto_per_sell >= min_sell_amount and (min_sell_cost <= 0 or notional >= min_sell_cost):
+                        break
+                    num_sells -= 1
+                    crypto_per_sell = min(crypto_available / num_sells, max_single_crypto) * heat_multiplier
+
+                if num_sells < orig_num_sells:
+                    logger.info(f"[Grid] Reduced sell levels: {orig_num_sells} -> {num_sells} (balance too small)")
+
+                sell_prices_used = sell_prices[:num_sells]
+
+                for price in sell_prices_used:
                     if avg_cost > 0 and price < avg_cost * (1 + self.fee_rate * 2):
                         logger.debug(f"Skipping sell @ ${price:.2f} — below cost basis ${avg_cost:.2f}")
                         continue
-                    if crypto_per_sell > 0:
+                    if crypto_per_sell >= min_sell_amount:
+                        notional = crypto_per_sell * price
+                        if min_sell_cost > 0 and notional < min_sell_cost:
+                            continue
                         self.grid_levels.append({
                             'price': price,
                             'quantity': crypto_per_sell,
@@ -1240,6 +1274,7 @@ class SmartGridTradingBot:
 
             market_info = self.exchange.market(self.symbol)
             min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0001)
+            min_cost = market_info.get('limits', {}).get('cost', {}).get('min', 0)
 
             # Get momentum for entry timing (cached, low overhead)
             momentum = 0.0
@@ -1267,10 +1302,16 @@ class SmartGridTradingBot:
                         current_price, price, momentum, is_buy):
                     continue
 
-                quantity = self.exchange.amount_to_precision(self.symbol, level['quantity'])
-                quantity = float(quantity)
+                try:
+                    quantity = self.exchange.amount_to_precision(self.symbol, level['quantity'])
+                    quantity = float(quantity)
+                except Exception:
+                    continue
 
                 if quantity < min_amount:
+                    continue
+
+                if min_cost > 0 and quantity * price < min_cost:
                     continue
 
                 try:
@@ -1430,8 +1471,26 @@ class SmartGridTradingBot:
             if quantity <= 0 or new_price <= 0:
                 return
 
-            quantity = float(self.exchange.amount_to_precision(self.symbol, quantity))
+            try:
+                quantity = float(self.exchange.amount_to_precision(self.symbol, quantity))
+            except Exception:
+                logger.debug(f"Opposite {side}: quantity too small for precision rules")
+                return
+
             new_price = round(new_price, 2)
+
+            # Validate against exchange minimums
+            market_info = self.exchange.market(self.symbol)
+            min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0001)
+            min_cost = market_info.get('limits', {}).get('cost', {}).get('min', 0)
+
+            if quantity < min_amount:
+                logger.info(f"Opposite {side} skipped: {quantity:.6f} below min amount {min_amount}")
+                return
+
+            if min_cost > 0 and quantity * new_price < min_cost:
+                logger.info(f"Opposite {side} skipped: notional ${quantity * new_price:.2f} below min ${min_cost:.2f}")
+                return
 
             order = self.exchange.create_order(
                 symbol=self.symbol, type='limit', side=side,
