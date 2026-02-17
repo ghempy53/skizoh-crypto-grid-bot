@@ -1,46 +1,54 @@
 {
-    "_comment": "=== SKIZOH GRID BOT v2.0 - PROFIT OPTIMIZED CONFIGURATION ===",
-    
+    "_comment": "=== SKIZOH GRID BOT v3.0 - SMART ADAPTIVE CONFIGURATION ===",
+
     "api_key": "YOUR_BINANCE_US_API_KEY",
     "api_secret": "YOUR_BINANCE_US_API_SECRET",
-    
+
     "_comment_symbol": "Trading pair - ETH/USDT recommended for liquidity",
     "symbol": "ETH/USDT",
-    
+
     "_comment_fees": "=== FEE OPTIMIZATION ===",
     "_comment_fee_rate": "Your actual fee rate. Check Binance.US VIP level.",
     "fee_rate": 0.001,
-    
+
     "_comment_bnb": "Enable BNB for 25% fee discount (requires BNB balance)",
     "use_bnb_for_fees": false,
-    
+
     "_comment_docker": "=== DOCKER / NON-INTERACTIVE SETTINGS ===",
     "default_scenario": "Balanced",
-    
+
     "_comment_exposure": "=== RISK MANAGEMENT ===",
     "_comment_position": "Max % of portfolio in crypto (prevents over-exposure)",
     "max_position_percent": 70,
-    
+
     "_comment_order": "Max % for single order (prevents concentration risk)",
     "max_single_order_percent": 10,
-    
-    "_comment_dynamic": "=== DYNAMIC SCENARIO ADJUSTMENT ===",
-    "_comment_enable_dynamic": "Auto-switch scenarios based on market conditions",
+
+    "_comment_smart": "=== v3.0 SMART ADAPTIVE CONFIG ===",
+
+    "_comment_adaptive": "Enable continuous parameter blending across scenarios (v3.0)",
+    "_comment_adaptive2": "When enabled, parameters are smoothly interpolated based on market regime",
+    "_comment_adaptive3": "When disabled, falls back to v2.0 discrete scenario switching",
+    "enable_adaptive_config": true,
+
+    "_comment_dynamic": "=== DYNAMIC SCENARIO ADJUSTMENT (v2.0 fallback) ===",
+    "_comment_enable_dynamic": "Auto-switch scenarios when adaptive config is disabled",
     "enable_dynamic_scenarios": true,
-    
+
     "_comment_cycles": "Cycles between scenario evaluations (lower = more responsive)",
     "cycles_per_scenario_check": 5,
-    
+
     "_comment_hold": "Minimum minutes to stay in a scenario (prevents flip-flopping)",
     "min_scenario_hold_minutes": 45,
-    
+
     "_comment_confidence": "Required confidence to change scenarios (0.0-1.0)",
     "scenario_change_confidence": 0.65,
-    
+
     "_comment_scenarios": "=== TRADING SCENARIOS ===",
     "_comment_profit": "PROFIT TIP: Grid spacing must exceed 2x fees to profit!",
     "_comment_minimum": "With 0.1% fee: minimum profitable spacing = 0.5%",
-    
+    "_comment_blending": "v3.0: Adaptive engine blends parameters from all scenarios based on market fit",
+
     "config_data": [
         {
             "name": "Conservative",
@@ -55,7 +63,7 @@
             "volatility_threshold": 3.5,
             "check_interval_seconds": 90,
             "_expected_profit_per_cycle": "1.3%",
-            "_best_conditions": "Uncertain markets, learning phase"
+            "_best_conditions": "Uncertain markets, strong trends, learning phase"
         },
         {
             "name": "Balanced",
@@ -85,7 +93,7 @@
             "volatility_threshold": 5.0,
             "check_interval_seconds": 45,
             "_expected_profit_per_cycle": "0.45%",
-            "_best_conditions": "Active monitoring, good liquidity"
+            "_best_conditions": "Active monitoring, good liquidity, breakouts"
         },
         {
             "name": "Low Volatility",
@@ -116,7 +124,7 @@
             "volatility_threshold": 8.0,
             "check_interval_seconds": 60,
             "_expected_profit_per_cycle": "1.8%",
-            "_best_conditions": "Daily range > 5%, major news events"
+            "_best_conditions": "Daily range > 5%, major news events, high volatility regime"
         },
         {
             "name": "Scalping",
@@ -131,7 +139,7 @@
             "volatility_threshold": 4.0,
             "check_interval_seconds": 30,
             "_expected_profit_per_cycle": "0.3%",
-            "_best_conditions": "Low fees, high frequency, tight spreads",
+            "_best_conditions": "Low fees, high frequency, tight spreads, low volatility",
             "_warning": "MARGINAL profits! Requires fee optimization."
         },
         {
@@ -147,7 +155,7 @@
             "volatility_threshold": 10.0,
             "check_interval_seconds": 180,
             "_expected_profit_per_cycle": "2.8%",
-            "_best_conditions": "Multi-day holds, less monitoring"
+            "_best_conditions": "Multi-day holds, trending up, less monitoring"
         },
         {
             "name": "Night Mode",
@@ -162,11 +170,11 @@
             "volatility_threshold": 3.5,
             "check_interval_seconds": 120,
             "_expected_profit_per_cycle": "1.0%",
-            "_best_conditions": "Overnight trading, unmonitored periods"
+            "_best_conditions": "Overnight/unmonitored, auto-applied by time-of-day engine"
         },
         {
             "name": "Mean Reversion",
-            "description": "NEW: Optimized for ranging markets with RSI signals",
+            "description": "Optimized for ranging markets with RSI signals",
             "risk_level": 3,
             "grid_levels": 10,
             "grid_spacing_percent": 0.75,
@@ -177,7 +185,7 @@
             "volatility_threshold": 4.0,
             "check_interval_seconds": 45,
             "_expected_profit_per_cycle": "0.55%",
-            "_best_conditions": "ADX < 25, clear S/R levels"
+            "_best_conditions": "ADX < 25, RSI extremes, clear S/R levels, mean reverting regime"
         }
     ]
 }

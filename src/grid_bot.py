@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 #  =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v2.0
+# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v3.0
 # =============================================================================
 # PROFIT OPTIMIZATIONS:
 # - Asymmetric grid placement based on market bias
@@ -38,6 +38,18 @@
 # - Trailing profit locks
 # - Capital efficiency improvements
 # - BNB fee discount support
+#
+# SMART v3.0 FEATURES:
+# - Adaptive configuration engine (continuous parameter blending)
+# - Multi-timeframe market regime detection
+# - Circuit breaker pattern for API resilience
+# - Flash crash detection and emergency response
+# - Portfolio heat tracking for position sizing
+# - Volume-aware grid placement
+# - VWAP-based buy/sell bias
+# - Heartbeat system for external monitoring
+# - Auto-recovery from exchange disconnections
+# - 24/7 uptime resilience
 #
 # PI OPTIMIZATIONS:
 # - Aggressive memory management
@@ -61,6 +73,12 @@ import os
 
 from config_manager import ConfigManager
 from market_analysis import MarketAnalyzer
+from adaptive_config import AdaptiveConfigEngine, MarketRegimeDetector, MarketRegime
+from resilience import (
+    CircuitBreaker, retry_with_backoff, ConnectionMonitor,
+    FlashCrashDetector, PortfolioHeatTracker, Heartbeat,
+    SessionHealth
+)
 
 logger = logging.getLogger(__name__)
 
@@ -446,17 +464,23 @@ class ProfitOptimizer:
 
 class SmartGridTradingBot:
     """
-    Smart grid trading bot v2.0 with profit optimization.
-    
-    KEY OPTIMIZATIONS:
+    Smart grid trading bot v3.0 with adaptive intelligence.
+
+    KEY FEATURES:
     1. Asymmetric grid placement based on market bias
     2. Dynamic spacing that adapts to volatility
     3. Momentum-based entry timing
     4. Profit zone acceleration
     5. Capital efficiency improvements
     6. Memory-efficient for Raspberry Pi
+    7. Adaptive config engine (v3.0) - continuous parameter blending
+    8. Market regime detection (v3.0) - multi-timeframe analysis
+    9. Circuit breaker resilience (v3.0) - 24/7 uptime
+    10. Flash crash protection (v3.0) - emergency response
+    11. Portfolio heat management (v3.0) - dynamic position sizing
+    12. Volume-aware grid placement (v3.0) - VWAP/volume profile
     """
-    
+
     DEFAULT_FEE_RATE = 0.001  # 0.1%
     TREND_PAUSE_SECONDS = 1800  # 30 minutes
     REPOSITION_THRESHOLD_MULTIPLIER = 2.0  # Reduced for more responsive repositioning
@@ -467,7 +491,12 @@ class SmartGridTradingBot:
     # Pi-specific settings
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
     MAX_MEMORY_MB = 300  # Force GC if above this
-    
+
+    # v3.0 resilience settings
+    MAX_CONSECUTIVE_API_FAILURES = 10
+    RECONNECT_DELAY_BASE = 5.0  # seconds
+    DEGRADED_MODE_INTERVAL_MULTIPLIER = 3.0  # Slow down checks in degraded mode
+
     def __init__(self, config_file: str = 'config.json', scenario: Optional[Dict[str, Any]] = None):
         """Initialize the smart grid trading bot."""
         # Resolve config file path
@@ -501,15 +530,54 @@ class SmartGridTradingBot:
         if scenario is None:
             scenario = self.config_manager.select_scenario_interactive()
         self.load_scenario(scenario)
-        
+
         # Initialize exchange
         self.exchange = self.initialize_exchange()
         self.market_analyzer = MarketAnalyzer(self.exchange, self.symbol)
-        
+
+        # =====================================================================
+        # v3.0: Smart Adaptive Systems
+        # =====================================================================
+
+        # Adaptive configuration engine (replaces discrete scenario switching)
+        self.enable_adaptive_config = config.get('enable_adaptive_config', True)
+        self.regime_detector = MarketRegimeDetector(self.market_analyzer)
+        self.adaptive_engine = AdaptiveConfigEngine(
+            self.config_manager.scenarios, self.regime_detector
+        )
+
+        # Circuit breakers for API resilience
+        self._cb_trading = CircuitBreaker(
+            'trading', failure_threshold=5, recovery_timeout=120
+        )
+        self._cb_market_data = CircuitBreaker(
+            'market_data', failure_threshold=8, recovery_timeout=60
+        )
+
+        # Connection monitoring
+        self.connection_monitor = ConnectionMonitor()
+
+        # Flash crash detector
+        self.flash_crash_detector = FlashCrashDetector()
+
+        # Portfolio heat tracker
+        self.portfolio_heat = PortfolioHeatTracker()
+
+        # Heartbeat for external monitoring
+        heartbeat_file = str(self.data_dir / 'heartbeat.json')
+        self.heartbeat = Heartbeat(heartbeat_file, interval=60)
+
+        # Session health
+        self.session_health = SessionHealth()
+
+        # =====================================================================
+        # End v3.0 systems
+        # =====================================================================
+
         # Position tracking
         position_state_file = str(self.data_dir / 'position_state.json')
         self.position_tracker = PositionTracker(state_file=position_state_file)
-        
+
         # Trading state
         self.grid_levels: List[Dict] = []
         self.active_orders: Dict[str, Dict] = {}
@@ -517,25 +585,25 @@ class SmartGridTradingBot:
         self.cycles_completed = 0
         self.profitable_cycles = 0
         self.total_cycle_profit = 0.0
-        
+
         # Exposure limits
         self.max_position_percent = config.get('max_position_percent', 75)
         self.max_single_order_percent = config.get('max_single_order_percent', 10)
-        
+
         # Tax logging
         self.tax_log_file = str(self.data_dir / 'tax_transactions.csv')
         self.initialize_tax_log()
-        
-        # Dynamic scenario settings
+
+        # Dynamic scenario settings (v2.0 fallback when adaptive config is disabled)
         self.enable_dynamic_scenarios = config.get('enable_dynamic_scenarios', True)
-        self.cycles_per_scenario_check = config.get('cycles_per_scenario_check', 5)  # More frequent checks
+        self.cycles_per_scenario_check = config.get('cycles_per_scenario_check', 5)
         self.cycles_since_scenario_check = 0
         self.current_scenario_index = None
         self.last_scenario_change = time.time()
-        self.min_scenario_hold_time = config.get('min_scenario_hold_minutes', 45) * 60  # Reduced
-        self.scenario_change_threshold = config.get('scenario_change_confidence', 0.65)  # Lower threshold
+        self.min_scenario_hold_time = config.get('min_scenario_hold_minutes', 45) * 60
+        self.scenario_change_threshold = config.get('scenario_change_confidence', 0.65)
         self.recent_scenario_scores = []
-        
+
         # Grid state
         self.grid_center_price: Optional[float] = None
         self.last_grid_update = time.time()
@@ -544,16 +612,16 @@ class SmartGridTradingBot:
         self._last_market_conditions: Optional[Dict[str, Any]] = None
         self._last_market_conditions_time = 0.0
         self._market_conditions_ttl = 30  # reuse for 30s
-        
+
         # Performance tracking
         self.start_time: Optional[datetime] = None
         self.peak_value = 0.0
         self.max_drawdown = 0.0
         self.last_profit_time = time.time()
-        
+
         # Trend pause state
         self.trend_pause_until = 0.0
-        
+
         # ETH accumulation tracking
         self.initial_eth_balance: Optional[float] = None
         self.eth_high_watermark = 0.0
@@ -617,7 +685,7 @@ class SmartGridTradingBot:
                 }
             })
             exchange.load_markets()
-            
+
             # Get actual fee rate
             try:
                 trading_fees = exchange.fetch_trading_fees()
@@ -633,12 +701,79 @@ class SmartGridTradingBot:
                     logger.info(f"Exchange fee rate: {self.fee_rate*100:.3f}%")
             except Exception:
                 logger.info(f"Using default fee rate: {self.fee_rate*100:.3f}%")
-            
+
             logger.info("Exchange connection established (Binance.US)")
             return exchange
         except Exception as e:
             logger.error(f"Failed to initialize exchange: {e}")
             raise
+
+    def _reconnect_exchange(self) -> bool:
+        """
+        Attempt to reconnect to the exchange after connection loss.
+
+        v3.0: Uses exponential backoff and updates connection monitor.
+        """
+        logger.warning("Attempting exchange reconnection...")
+        self.connection_monitor.record_reconnect()
+
+        def _try_connect():
+            self.exchange = ccxt.binanceus({
+                'apiKey': self.api_key,
+                'secret': self.api_secret,
+                'enableRateLimit': True,
+                'timeout': 30000,
+                'options': {
+                    'adjustForTimeDifference': True,
+                    'recvWindow': 60000,
+                }
+            })
+            self.exchange.load_markets()
+            # Verify connection with a lightweight call
+            self.exchange.fetch_ticker(self.symbol)
+            return True
+
+        result = retry_with_backoff(
+            _try_connect, max_retries=4,
+            base_delay=self.RECONNECT_DELAY_BASE,
+            circuit_breaker=self._cb_market_data,
+            fallback=False
+        )
+
+        if result:
+            self.market_analyzer = MarketAnalyzer(self.exchange, self.symbol)
+            self.regime_detector = MarketRegimeDetector(self.market_analyzer)
+            self.adaptive_engine.regime_detector = self.regime_detector
+            logger.info("Exchange reconnection successful")
+        else:
+            logger.error("Exchange reconnection failed after all retries")
+
+        return bool(result)
+
+    def _resilient_api_call(self, func, circuit_breaker=None, fallback=None):
+        """
+        Execute an API call with circuit breaker protection and monitoring.
+
+        v3.0: Wraps all exchange API calls for resilience.
+        """
+        cb = circuit_breaker or self._cb_market_data
+        start = time.time()
+
+        try:
+            if not cb.can_execute():
+                return fallback
+
+            result = func()
+            duration = time.time() - start
+            self.connection_monitor.record_api_call(duration, success=True)
+            cb.record_success()
+            return result
+        except Exception as e:
+            duration = time.time() - start
+            self.connection_monitor.record_api_call(duration, success=False)
+            cb.record_failure()
+            logger.warning(f"API call failed: {e}")
+            return fallback
     
     def initialize_tax_log(self):
         """Initialize CSV file for tax record keeping."""
@@ -727,6 +862,8 @@ class SmartGridTradingBot:
         Results are cached for ``_market_conditions_ttl`` seconds so that
         multiple callers in the same cycle (main loop, scenario checker) share
         the same data without redundant API calls.
+
+        v3.0: Now includes volume analysis, VWAP, and regime detection.
         """
         now = time.time()
         if (not force_refresh
@@ -735,7 +872,12 @@ class SmartGridTradingBot:
             return self._last_market_conditions
 
         try:
-            ticker = self.exchange.fetch_ticker(self.symbol)
+            ticker = self._resilient_api_call(
+                lambda: self.exchange.fetch_ticker(self.symbol)
+            )
+            if not ticker:
+                return self._last_market_conditions  # Return stale data if available
+
             current_price = ticker['last']
             high_24h = ticker['high']
             low_24h = ticker['low']
@@ -769,14 +911,30 @@ class SmartGridTradingBot:
                 'bb': bb,
                 'momentum': momentum,
                 'high_24h': high_24h,
-                'low_24h': low_24h
+                'low_24h': low_24h,
             }
+
+            # v3.0: Add volume analysis (non-critical, won't block on failure)
+            try:
+                vwap = self.market_analyzer.calculate_vwap()
+                vol_momentum = self.market_analyzer.calculate_volume_momentum()
+                vol_profile = self.market_analyzer.calculate_volume_profile()
+                result['vwap'] = vwap
+                result['volume_momentum'] = vol_momentum
+                result['volume_profile'] = vol_profile
+            except Exception:
+                pass
+
+            # v3.0: Flash crash detection
+            crash_status = self.flash_crash_detector.update(current_price)
+            result['flash_crash'] = crash_status
+
             self._last_market_conditions = result
             self._last_market_conditions_time = now
             return result
         except Exception as e:
             logger.error(f"Failed to get market conditions: {e}")
-            return None
+            return self._last_market_conditions  # Return stale data on failure
     
     def check_trend_filter(self) -> bool:
         """Check if market is suitable for grid trading."""
@@ -836,61 +994,102 @@ class SmartGridTradingBot:
         return price_move_pct > threshold and time_since_update > self.MIN_GRID_UPDATE_INTERVAL
     
     def calculate_grid_levels(self, reposition: bool = False) -> bool:
-        """Calculate optimized grid levels."""
+        """
+        Calculate optimized grid levels.
+
+        v3.0: Uses adaptive config engine for parameters, volume profile
+        for grid placement, and portfolio heat for position sizing.
+        """
         try:
             market = self.get_market_conditions()
             if not market:
                 return False
-            
+
             current_price = market['price']
             balances = self.get_balances()
             if not balances:
                 return False
-            
-            # Get optimal spacing based on conditions
+
+            # v3.0: Use adaptive config engine for parameters if enabled
+            if self.enable_adaptive_config:
+                adaptive_params = self.adaptive_engine.compute_blended_params(market)
+                adapted_spacing = adaptive_params.get('grid_spacing_percent', self.base_grid_spacing)
+                adapted_levels = adaptive_params.get_int('grid_levels', self.grid_levels_count)
+                adapted_investment = adaptive_params.get('investment_percent', self.investment_percent)
+                adapted_interval = adaptive_params.get('check_interval_seconds', self.check_interval)
+
+                # Apply smoothly adapted parameters
+                self.check_interval = max(15, adapted_interval)
+            else:
+                adapted_spacing = self.base_grid_spacing
+                adapted_levels = self.grid_levels_count
+                adapted_investment = self.investment_percent
+
+            # Get optimal spacing based on conditions (layered on top of adaptive base)
             optimal_spacing = self.profit_optimizer.calculate_optimal_spacing(
-                self.base_grid_spacing,
+                adapted_spacing,
                 market['volatility'],
                 market['adx'],
                 market['rsi']
             )
-            
+
             if abs(optimal_spacing - self.grid_spacing_percent) > 0.1:
-                logger.info(f"📊 Spacing adjusted: {self.grid_spacing_percent:.2f}% → {optimal_spacing:.2f}%")
+                logger.info(f"[Grid] Spacing adjusted: {self.grid_spacing_percent:.2f}% -> {optimal_spacing:.2f}%")
                 self.grid_spacing_percent = optimal_spacing
 
             # Dynamic level count based on grid efficiency
             efficiency = self.market_analyzer.calculate_grid_efficiency_score()
             if efficiency:
                 eff_score = efficiency['score']
-                base_levels = self.grid_levels_count
+                base_levels = adapted_levels
                 if eff_score >= 80:
-                    # Excellent conditions: increase levels by up to 30%
-                    adjusted_levels = min(int(base_levels * 1.3), 20)
+                    adjusted_levels = min(int(base_levels * 1.3), 24)
                 elif eff_score >= 60:
-                    adjusted_levels = base_levels  # Normal
+                    adjusted_levels = base_levels
                 elif eff_score >= 40:
-                    # Marginal: reduce levels to concentrate capital
                     adjusted_levels = max(int(base_levels * 0.7), 3)
                 else:
-                    # Poor: minimal grid
                     adjusted_levels = max(int(base_levels * 0.5), 2)
 
-                if adjusted_levels != self.grid_levels_count:
-                    logger.info(f"📊 Levels adjusted: {self.grid_levels_count} → {adjusted_levels} "
+                if adjusted_levels != adapted_levels:
+                    logger.info(f"[Grid] Levels adjusted: {adapted_levels} -> {adjusted_levels} "
                                f"(efficiency: {eff_score})")
 
                 effective_levels = adjusted_levels
             else:
-                effective_levels = self.grid_levels_count
+                effective_levels = adapted_levels
+
+            # v3.0: Portfolio heat-based position sizing
+            heat_multiplier = self.portfolio_heat.get_position_size_multiplier()
+            if heat_multiplier < 1.0:
+                effective_levels = max(2, int(effective_levels * heat_multiplier))
+                logger.info(f"[Heat] Reduced levels to {effective_levels} (heat multiplier: {heat_multiplier:.2f})")
 
             # Get market bias
             bias = self.market_analyzer.should_adjust_grid_bias()
 
+            # v3.0: VWAP-based bias adjustment
+            vwap_data = market.get('vwap')
+            if vwap_data:
+                if vwap_data.get('price_above_vwap'):
+                    # Price above VWAP: slight sell bias (revert to VWAP)
+                    distance = abs(vwap_data.get('distance_percent', 0))
+                    if distance > 0.5:
+                        sell_boost = min(0.1, distance * 0.02)
+                        bias['sell_weight'] = min(0.75, bias['sell_weight'] + sell_boost)
+                        bias['buy_weight'] = 1.0 - bias['sell_weight']
+                else:
+                    # Price below VWAP: slight buy bias
+                    distance = abs(vwap_data.get('distance_percent', 0))
+                    if distance > 0.5:
+                        buy_boost = min(0.1, distance * 0.02)
+                        bias['buy_weight'] = min(0.75, bias['buy_weight'] + buy_boost)
+                        bias['sell_weight'] = 1.0 - bias['buy_weight']
+
             # Exposure check BEFORE calculating levels so bias adjustment takes effect
             exposure = self.check_exposure_limits(current_price)
             if exposure.get('should_reduce'):
-                logger.warning(f"⚠️ High exposure ({exposure['current_exposure']:.1f}%), favoring sells")
+                logger.warning(f"[Exposure] High exposure ({exposure['current_exposure']:.1f}%), favoring sells")
                 bias['buy_weight'] = max(0.15, bias['buy_weight'] * 0.5)
                 bias['sell_weight'] = 1.0 - bias['buy_weight']
 
@@ -898,33 +1097,46 @@ class SmartGridTradingBot:
             buy_prices, sell_prices = self.profit_optimizer.calculate_asymmetric_levels(
                 current_price, effective_levels, self.grid_spacing_percent, bias
             )
-            
+
+            # v3.0: Snap buy levels to high-volume nodes (support zones) if available
+            vol_profile = market.get('volume_profile')
+            if vol_profile and vol_profile.get('hvn_prices'):
+                buy_prices = self._snap_to_volume_nodes(
+                    buy_prices, vol_profile['hvn_prices'],
+                    current_price, is_buy=True
+                )
+
             if self.initial_investment == 0:
                 self.initial_investment = balances['quote'] + (balances['base'] * current_price)
                 self.start_time = datetime.now()
-            
+
             if reposition:
-                logger.info("🔄 Repositioning grid")
+                logger.info("[Grid] Repositioning grid")
                 self.cancel_all_orders()
-            
+
             self.grid_levels = []
             self.grid_center_price = current_price
             self.last_grid_update = time.time()
-            
-            # Investment calculation
+
+            # Investment calculation with adaptive percentage
             investment_pct = self.calculate_compounded_investment()
+            if self.enable_adaptive_config:
+                investment_pct = min(investment_pct, adapted_investment)
             available_usdt = balances['quote'] * (investment_pct / 100)
             max_single_usdt = self.initial_investment * (self.max_single_order_percent / 100)
-            
+
+            # v3.0: Apply heat-based sizing to order amounts
+            available_usdt *= heat_multiplier
+
             # Create buy levels
             num_buys = len(buy_prices)
             if num_buys > 0:
                 usdt_per_buy = min(available_usdt / num_buys, max_single_usdt)
-                
+
                 for price in buy_prices:
                     if price <= 0 or usdt_per_buy < self.min_order_size_usdt:
                         continue
-                    
+
                     quantity = usdt_per_buy / price
                     self.grid_levels.append({
                         'price': price,
@@ -933,7 +1145,7 @@ class SmartGridTradingBot:
                         'filled': False,
                         'order_id': None
                     })
-            
+
             # Create sell levels (only above average cost basis to protect ETH)
             crypto_available = balances['base']
             num_sells = len(sell_prices)
@@ -942,8 +1154,10 @@ class SmartGridTradingBot:
                 max_single_crypto = max_single_usdt / current_price
                 crypto_per_sell = min(crypto_available / num_sells, max_single_crypto)
 
+                # v3.0: Apply heat multiplier to sell sizing too
+                crypto_per_sell *= heat_multiplier
+
                 for price in sell_prices:
-                    # Never sell below cost basis — protects ETH from being sold at a loss
                     if avg_cost > 0 and price < avg_cost * (1 + self.fee_rate * 2):
                         logger.debug(f"Skipping sell @ ${price:.2f} — below cost basis ${avg_cost:.2f}")
                         continue
@@ -955,19 +1169,75 @@ class SmartGridTradingBot:
                             'filled': False,
                             'order_id': None
                         })
-            
-            logger.info(f"📊 Grid: {len([l for l in self.grid_levels if l['type']=='buy'])} buys, "
+
+            # Get regime info for logging
+            regime_info = ""
+            if self.enable_adaptive_config:
+                regime = self.adaptive_engine.get_active_regime()
+                if regime:
+                    regime_info = f" | Regime: {regime.primary_regime}"
+
+            logger.info(f"[Grid] {len([l for l in self.grid_levels if l['type']=='buy'])} buys, "
                        f"{len([l for l in self.grid_levels if l['type']=='sell'])} sells @ "
-                       f"{self.grid_spacing_percent:.2f}% spacing (bias: {bias['bias']})")
-            
+                       f"{self.grid_spacing_percent:.2f}% spacing (bias: {bias['bias']}{regime_info})")
+
             return True
         except Exception as e:
             logger.error(f"Failed to calculate grid: {e}")
             return False
+
+    def _snap_to_volume_nodes(self, prices: List[float], hvn_prices: List[float],
+                               current_price: float, is_buy: bool,
+                               snap_threshold_pct: float = 0.3) -> List[float]:
+        """
+        Snap grid prices to nearby high-volume nodes.
+
+        HVN prices act as support/resistance where grid orders are more
+        likely to fill and bounce back, completing cycles faster.
+
+        Only snaps if the HVN is within snap_threshold_pct of the original level.
+        """
+        if not hvn_prices:
+            return prices
+
+        snapped = []
+        for price in prices:
+            best_hvn = None
+            best_distance = float('inf')
+
+            for hvn in hvn_prices:
+                if is_buy and hvn >= current_price:
+                    continue  # Only snap buys to HVNs below price
+                if not is_buy and hvn <= current_price:
+                    continue  # Only snap sells to HVNs above price
+
+                distance_pct = abs(price - hvn) / price * 100
+                if distance_pct < snap_threshold_pct and distance_pct < best_distance:
+                    best_distance = distance_pct
+                    best_hvn = hvn
+
+            snapped.append(best_hvn if best_hvn else price)
+
+        return snapped
     
     def place_grid_orders(self):
-        """Place optimized grid orders with momentum-based entry timing."""
+        """
+        Place optimized grid orders with momentum-based entry timing.
+
+        v3.0: Uses circuit breaker for API resilience. Skips order placement
+        if flash crash is detected or portfolio heat is too high.
+        """
         try:
+            # v3.0: Skip if flash crash detected
+            if self.flash_crash_detector.is_alert_active():
+                logger.warning("[Flash] Skipping order placement — flash crash alert active")
+                return
+
+            # v3.0: Skip if trading circuit breaker is open
+            if not self._cb_trading.can_execute():
+                logger.warning("[CB] Trading circuit breaker is open — skipping orders")
+                return
+
             market_info = self.exchange.market(self.symbol)
             min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0001)
 
@@ -981,6 +1251,7 @@ class SmartGridTradingBot:
                 pass
 
             current_price = self.grid_center_price or 0
+            orders_placed = 0
 
             for level in self.grid_levels:
                 if level['filled'] or level.get('order_id'):
@@ -1015,13 +1286,20 @@ class SmartGridTradingBot:
                     self.active_orders[order['id']] = {
                         'level': level, 'order': order, 'placed_at': time.time()
                     }
-                    logger.info(f"✓ {level['type'].upper()}: {quantity:.6f} @ ${price:.2f}")
+                    self._cb_trading.record_success()
+                    orders_placed += 1
+                    logger.info(f"[Order] {level['type'].upper()}: {quantity:.6f} @ ${price:.2f}")
 
                 except ccxt.InsufficientFunds:
                     logger.warning(f"Insufficient funds for {level['type']} @ ${price}")
                     break
                 except Exception as e:
+                    self._cb_trading.record_failure()
                     logger.warning(f"Order failed @ ${price}: {e}")
+
+            if orders_placed > 0:
+                logger.info(f"[Orders] Placed {orders_placed} new orders")
+
         except Exception as e:
             logger.error(f"Failed to place orders: {e}")
     
@@ -1519,69 +1797,262 @@ class SmartGridTradingBot:
         self._print_final_summary()
     
     def _print_final_summary(self):
-        """Print trading session summary."""
+        """Print trading session summary with v3.0 diagnostics."""
         try:
             current_price = self.exchange.fetch_ticker(self.symbol)['last'] or 0
             position = self.position_tracker.get_summary(current_price)
             runtime = datetime.now() - self.start_time if self.start_time else None
-            
+
             logger.info("=" * 60)
-            logger.info("SESSION SUMMARY")
+            logger.info("SESSION SUMMARY (v3.0)")
             logger.info("=" * 60)
             logger.info(f"Strategy: {self.scenario_name}")
             if runtime:
                 logger.info(f"Runtime: {runtime}")
-            logger.info(f"Cycles: {self.cycles_completed} (Win rate: {self.profitable_cycles/max(1,self.cycles_completed)*100:.0f}%)")
+            logger.info(f"Cycles: {self.cycles_completed} "
+                       f"(Win rate: {self.profitable_cycles/max(1,self.cycles_completed)*100:.0f}%)")
             logger.info(f"Realized P&L: ${position['realized_pnl']:.2f}")
             logger.info(f"Total fees: ${position['total_fees']:.2f}")
             logger.info(f"Max drawdown: {self.max_drawdown:.2f}%")
+
             if self.initial_eth_balance is not None:
                 balances = self.get_balances()
                 if balances:
                     eth_now = balances['base_total']
                     eth_change = eth_now - self.initial_eth_balance
                     logger.info(f"ETH: {eth_now:.6f} ({eth_change:+.6f} since start)")
+
+            # v3.0: Smart system diagnostics
+            logger.info("-" * 60)
+            logger.info("SMART SYSTEMS DIAGNOSTICS")
+            logger.info("-" * 60)
+
+            # Session health
+            health = self.session_health.get_status()
+            logger.info(f"Session health: {health['overall_score']}/100 "
+                       f"(degraded: {health['degraded_mode']})")
+            logger.info(f"Uptime: {health['uptime_seconds']/3600:.1f}h")
+
+            # Connection stats
+            conn = self.connection_monitor.get_stats()
+            logger.info(f"Connection: {conn['health_score']}/100, "
+                       f"Error rate: {conn['error_rate']}, "
+                       f"Reconnects: {conn['reconnects']}")
+
+            # Circuit breaker stats
+            cb_trading = self._cb_trading.get_stats()
+            cb_market = self._cb_market_data.get_stats()
+            logger.info(f"Circuit breakers: "
+                       f"Trading({cb_trading['state']}, {cb_trading['total_failures']} failures) "
+                       f"Market({cb_market['state']}, {cb_market['total_failures']} failures)")
+
+            # Portfolio heat
+            heat = self.portfolio_heat.get_status()
+            logger.info(f"Portfolio heat: {heat['heat']:.0f}/100 "
+                       f"(multiplier: {heat['size_multiplier']:.2f}x)")
+
+            # Regime detection
+            if self.enable_adaptive_config:
+                regime = self.adaptive_engine.get_active_regime()
+                if regime:
+                    stability = self.regime_detector.get_regime_stability()
+                    logger.info(f"Final regime: {regime.primary_regime} "
+                               f"(confidence: {regime.confidence:.0%}, "
+                               f"stability: {stability:.0%})")
+                weights = self.adaptive_engine.get_scenario_weights()
+                if weights:
+                    top = sorted(weights.items(), key=lambda x: x[1], reverse=True)[:3]
+                    logger.info(f"Top scenarios: {', '.join(f'{n}: {w:.0%}' for n, w in top)}")
+
             logger.info("=" * 60)
         except Exception:
             pass
     
+    def _update_portfolio_heat(self, current_price: float):
+        """Update portfolio heat tracking with current market data."""
+        try:
+            position = self.position_tracker.get_summary(current_price)
+            self.portfolio_heat.calculate_heat(
+                open_positions=position['num_positions'],
+                unrealized_pnl=position['unrealized_pnl'],
+                total_investment=self.initial_investment,
+                volatility=self.current_volatility,
+                drawdown_pct=self.max_drawdown,
+            )
+        except Exception:
+            pass
+
+    def _write_heartbeat(self, current_price: float = 0):
+        """Write heartbeat for external monitoring."""
+        try:
+            regime = self.adaptive_engine.get_active_regime() if self.enable_adaptive_config else None
+            self.heartbeat.beat({
+                'uptime_seconds': self.session_health.get_uptime_seconds(),
+                'cycles': self.cycles_completed,
+                'health_score': self.session_health.get_overall_score(),
+                'regime': regime.primary_regime if regime else 'N/A',
+                'portfolio_heat': self.portfolio_heat._current_heat,
+                'price': current_price,
+                'scenario': self.scenario_name,
+            })
+        except Exception:
+            pass
+
+    def _log_smart_status(self, current_price: float):
+        """Log comprehensive smart bot status (v3.0)."""
+        try:
+            health = self.session_health.get_status()
+            heat = self.portfolio_heat.get_status()
+            conn = self.connection_monitor.get_stats()
+
+            status_parts = [
+                f"[Health] Score: {health['overall_score']}",
+                f"Heat: {heat['heat']:.0f}/{heat['max_heat']}",
+                f"Conn: {conn['health_score']}",
+            ]
+
+            if self.enable_adaptive_config:
+                regime = self.adaptive_engine.get_active_regime()
+                if regime:
+                    stability = self.regime_detector.get_regime_stability()
+                    status_parts.append(
+                        f"Regime: {regime.primary_regime}({regime.confidence:.0%})"
+                    )
+                    status_parts.append(f"Stability: {stability:.0%}")
+
+            if self.session_health.is_degraded():
+                status_parts.append("MODE: DEGRADED")
+
+            logger.info(" | ".join(status_parts))
+        except Exception:
+            pass
+
     def run(self):
-        """Main trading loop."""
-        logger.info(f"🤖 Starting Grid Bot v2.0 - {self.scenario_name}")
-        logger.info(f"📊 Base spacing: {self.base_grid_spacing}%, Fee: {self.fee_rate*100:.3f}%")
-        
+        """
+        Main trading loop with v3.0 smart systems.
+
+        Features:
+        - Adaptive configuration with continuous parameter blending
+        - Flash crash detection and emergency response
+        - Auto-reconnect on connection loss
+        - Degraded mode operation (slower but keeps running)
+        - Portfolio heat-based position sizing
+        - Heartbeat for external monitoring
+        - Circuit breaker API protection
+        """
+        logger.info(f"[Bot] Starting Grid Bot v3.0 - {self.scenario_name}")
+        logger.info(f"[Bot] Base spacing: {self.base_grid_spacing}%, Fee: {self.fee_rate*100:.3f}%")
+        logger.info(f"[Bot] Adaptive config: {'ENABLED' if self.enable_adaptive_config else 'DISABLED'}")
+
         # Store scenario index
         for i, s in enumerate(self.config_manager.scenarios):
             if s['name'] == self.scenario_name:
                 self.current_scenario_index = i
                 break
-        
+
         if not self.calculate_grid_levels():
             logger.error("Failed to initialize grid")
             return
-        
+
+        smart_status_interval = 600  # Log smart status every 10 minutes
+        last_smart_status = time.time()
+
         try:
             while True:
-                logger.info("--- 🔄 Cycle ---")
+                cycle_start = time.time()
+                error_in_cycle = False
+
+                logger.info("--- Cycle ---")
 
                 # Memory check (Pi optimization)
                 self.check_memory_usage()
 
-                # Get current price (single fetch per cycle)
+                # ============================================================
+                # PHASE 1: Get market data (with resilience)
+                # ============================================================
+                current_price = 0
                 try:
-                    current_price = self.exchange.fetch_ticker(self.symbol)['last']
-                    if not current_price:
+                    # v3.0: Check connection health, reconnect if needed
+                    if not self.connection_monitor.is_connected():
+                        logger.warning("[Conn] Connection appears lost, attempting reconnect...")
+                        if not self._reconnect_exchange():
+                            self.session_health.update(0, False, error_occurred=True)
+                            sleep_time = self.check_interval * self.DEGRADED_MODE_INTERVAL_MULTIPLIER
+                            logger.warning(f"[Conn] Reconnect failed, sleeping {sleep_time:.0f}s")
+                            time.sleep(sleep_time)
+                            continue
+
+                    market = self.get_market_conditions()
+                    if market:
+                        current_price = market['price']
+                    else:
+                        error_in_cycle = True
                         time.sleep(self.check_interval)
                         continue
-                except Exception:
+                except Exception as e:
+                    logger.error(f"[Market] Data fetch failed: {e}")
+                    error_in_cycle = True
+                    self.session_health.update(
+                        self.connection_monitor.get_health_score(), False, error_occurred=True
+                    )
                     time.sleep(self.check_interval)
                     continue
 
-                # Trend filter
+                # ============================================================
+                # PHASE 2: Flash crash check (v3.0)
+                # ============================================================
+                flash_crash = market.get('flash_crash', {})
+                if flash_crash.get('crash_detected'):
+                    severity = flash_crash.get('severity', 0)
+                    logger.critical(
+                        f"[Flash] CRASH DETECTED (severity: {severity:.1f}x) — "
+                        f"cancelling orders and pausing"
+                    )
+                    self.cancel_all_orders()
+                    # Don't emergency stop unless very severe — just pause
+                    if severity >= 2.0:
+                        logger.critical("[Flash] Severe crash — triggering emergency stop")
+                        self.emergency_stop()
+                        break
+                    else:
+                        # Wait for crash cooldown
+                        time.sleep(min(300, self.check_interval * 5))
+                        continue
+
+                # ============================================================
+                # PHASE 3: Trend filter
+                # ============================================================
                 if not self.check_trend_filter():
+                    self.session_health.update(
+                        self.connection_monitor.get_health_score(), True
+                    )
                     time.sleep(self.check_interval)
                     continue
 
+                # ============================================================
+                # PHASE 4: Update adaptive parameters (v3.0)
+                # ============================================================
+                if self.enable_adaptive_config:
+                    try:
+                        self.adaptive_engine.compute_blended_params(market)
+                    except Exception as e:
+                        logger.debug(f"[Adaptive] Parameter update failed: {e}")
+
+                # ============================================================
+                # PHASE 5: Update portfolio heat (v3.0)
+                # ============================================================
+                self._update_portfolio_heat(current_price)
+
+                # v3.0: If portfolio heat says reduce, be more aggressive about cancelling
+                if self.portfolio_heat.should_reduce_exposure():
+                    logger.warning(
+                        f"[Heat] Portfolio heat critical ({self.portfolio_heat._current_heat:.0f}) — "
+                        f"reducing exposure"
+                    )
+
+                # ============================================================
+                # PHASE 6: Grid management
+                # ============================================================
                 # Reposition if needed
                 if self.should_reposition_grid(current_price):
                     self.calculate_grid_levels(reposition=True)
@@ -1591,7 +2062,9 @@ class SmartGridTradingBot:
                 self.place_grid_orders()
                 self.check_orders()
 
-                # Status + stop-loss (reuse already-fetched price)
+                # ============================================================
+                # PHASE 7: Status, stop-loss, reinvestment
+                # ============================================================
                 portfolio = self.calculate_current_value(current_price)
                 if not self.check_stop_loss(portfolio):
                     break
@@ -1600,19 +2073,51 @@ class SmartGridTradingBot:
                 if self.cycle_count % 10 == 0:
                     self.reinvest_profits_to_eth(current_price)
 
-                # Dynamic scenario switching
-                if self.enable_dynamic_scenarios:
+                # ============================================================
+                # PHASE 8: Dynamic scenario switching (v2.0 fallback)
+                # ============================================================
+                if self.enable_dynamic_scenarios and not self.enable_adaptive_config:
                     self._check_scenario_switch()
 
-                logger.info(f"💤 Sleep {self.check_interval}s\n")
-                time.sleep(self.check_interval)
-        
+                # ============================================================
+                # PHASE 9: Health updates and heartbeat (v3.0)
+                # ============================================================
+                self.session_health.update(
+                    self.connection_monitor.get_health_score(),
+                    trading_ok=True,
+                    error_occurred=error_in_cycle,
+                )
+                self._write_heartbeat(current_price)
+
+                # Periodic smart status logging
+                if time.time() - last_smart_status > smart_status_interval:
+                    self._log_smart_status(current_price)
+                    last_smart_status = time.time()
+
+                # v3.0: Check if session health warrants emergency stop
+                if self.session_health.should_emergency_stop():
+                    logger.critical("[Health] Too many consecutive errors — emergency stop")
+                    self.emergency_stop()
+                    break
+
+                # ============================================================
+                # PHASE 10: Sleep (with degraded mode adjustment)
+                # ============================================================
+                sleep_time = self.check_interval
+                if self.session_health.is_degraded():
+                    sleep_time *= self.DEGRADED_MODE_INTERVAL_MULTIPLIER
+                    logger.info(f"[Degraded] Extended sleep: {sleep_time:.0f}s")
+                else:
+                    logger.info(f"[Sleep] {sleep_time:.0f}s")
+
+                time.sleep(sleep_time)
+
         except KeyboardInterrupt:
-            logger.info("🛑 Stopped by user")
+            logger.info("[Bot] Stopped by user")
             self.cancel_all_orders()
             self._print_final_summary()
         except Exception as e:
-            logger.error(f"❌ Fatal error: {e}")
+            logger.error(f"[Bot] Fatal error: {e}")
             import traceback
             traceback.print_exc()
             self.emergency_stop()
