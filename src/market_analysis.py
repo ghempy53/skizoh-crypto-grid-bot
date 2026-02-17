@@ -29,13 +29,17 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v2.0
+# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v3.0
 # =============================================================================
 # PROFIT OPTIMIZATIONS:
 # - Volume-weighted momentum indicator
 # - Mean reversion probability calculator
 # - Optimal entry zone detection
 # - Grid efficiency scorer
+# - Multi-timeframe analysis (15m, 1h, 4h)
+# - Volume profile analysis
+# - VWAP calculation
+# - Liquidity zone detection
 #
 # PI OPTIMIZATIONS:
 # - Aggressive OHLCV caching (70% API reduction)
@@ -752,3 +756,394 @@ class MarketAnalyzer:
         self._ohlcv_cache.clear()
         self._indicator_cache.clear()
         self._indicator_ts.clear()
+
+    # =========================================================================
+    # VOLUME ANALYSIS (v3.0)
+    # =========================================================================
+
+    def calculate_volume_profile(self, lookback: int = 48,
+                                  timeframe: str = '1h') -> Optional[Dict[str, Any]]:
+        """
+        Calculate volume profile: volume distribution across price levels.
+
+        Identifies high-volume nodes (HVN) where price tends to consolidate
+        and low-volume nodes (LVN) where price moves quickly through.
+        Grid buy levels near HVN support zones are more likely to fill
+        and bounce back (completing the grid cycle).
+        """
+        cache_key = f"vol_profile_{lookback}_{timeframe}"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            ohlcv = self._fetch_ohlcv(timeframe, lookback)
+            if ohlcv is None or len(ohlcv) < 10:
+                return None
+
+            highs = ohlcv[:, 2]
+            lows = ohlcv[:, 3]
+            closes = ohlcv[:, 4]
+            volumes = ohlcv[:, 5]
+
+            current_price = float(closes[-1])
+            if current_price <= 0:
+                return None
+
+            # Create price bins (20 bins across the range)
+            price_min = float(np.min(lows))
+            price_max = float(np.max(highs))
+            if price_max <= price_min:
+                return None
+
+            num_bins = 20
+            bin_edges = np.linspace(price_min, price_max, num_bins + 1, dtype=np.float32)
+            bin_volumes = np.zeros(num_bins, dtype=np.float32)
+
+            # Distribute volume across price bins each candle touched
+            for i in range(len(ohlcv)):
+                candle_low = float(lows[i])
+                candle_high = float(highs[i])
+                candle_vol = float(volumes[i])
+                if candle_vol <= 0:
+                    continue
+
+                for j in range(num_bins):
+                    bin_low = float(bin_edges[j])
+                    bin_high = float(bin_edges[j + 1])
+                    # Overlap calculation
+                    overlap = max(0, min(candle_high, bin_high) - max(candle_low, bin_low))
+                    candle_range = candle_high - candle_low
+                    if candle_range > 0 and overlap > 0:
+                        fraction = overlap / candle_range
+                        bin_volumes[j] += candle_vol * fraction
+
+            # Find high-volume nodes (top 30%) and low-volume nodes (bottom 30%)
+            total_vol = float(np.sum(bin_volumes))
+            if total_vol <= 0:
+                return None
+
+            vol_normalized = bin_volumes / total_vol
+            threshold_high = float(np.percentile(vol_normalized, 70))
+            threshold_low = float(np.percentile(vol_normalized, 30))
+
+            hvn_prices = []  # High-Volume Nodes (support/resistance)
+            lvn_prices = []  # Low-Volume Nodes (fast-move zones)
+
+            for j in range(num_bins):
+                mid_price = float((bin_edges[j] + bin_edges[j + 1]) / 2)
+                if vol_normalized[j] >= threshold_high:
+                    hvn_prices.append(mid_price)
+                elif vol_normalized[j] <= threshold_low:
+                    lvn_prices.append(mid_price)
+
+            # Point of Control (POC): price level with highest volume
+            poc_idx = int(np.argmax(bin_volumes))
+            poc_price = float((bin_edges[poc_idx] + bin_edges[poc_idx + 1]) / 2)
+
+            # Value Area (68% of volume): range where most trading occurred
+            sorted_indices = np.argsort(bin_volumes)[::-1]
+            cumulative = 0.0
+            va_indices = []
+            for idx in sorted_indices:
+                cumulative += bin_volumes[idx]
+                va_indices.append(idx)
+                if cumulative / total_vol >= 0.68:
+                    break
+
+            va_low = float(bin_edges[min(va_indices)])
+            va_high = float(bin_edges[max(va_indices) + 1])
+
+            result = {
+                'poc_price': poc_price,
+                'value_area_low': va_low,
+                'value_area_high': va_high,
+                'hvn_prices': hvn_prices,
+                'lvn_prices': lvn_prices,
+                'current_in_value_area': va_low <= current_price <= va_high,
+                'volume_concentration': float(np.max(vol_normalized)),
+            }
+
+            self._set_cached(cache_key, result)
+            return result
+        except Exception as e:
+            logger.error(f"Volume profile calculation failed: {e}")
+            return None
+
+    def calculate_vwap(self, lookback: int = 24,
+                       timeframe: str = '1h') -> Optional[Dict[str, Any]]:
+        """
+        Calculate Volume-Weighted Average Price (VWAP).
+
+        VWAP acts as a dynamic support/resistance level. Price above VWAP
+        suggests bullish conditions; below suggests bearish.
+        Grid buys below VWAP and sells above VWAP have higher success rates.
+        """
+        cache_key = f"vwap_{lookback}_{timeframe}"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            ohlcv = self._fetch_ohlcv(timeframe, lookback)
+            if ohlcv is None or len(ohlcv) < 5:
+                return None
+
+            # Typical price = (H + L + C) / 3
+            typical_prices = (ohlcv[:, 2] + ohlcv[:, 3] + ohlcv[:, 4]) / 3
+            volumes = ohlcv[:, 5]
+
+            cumulative_tp_vol = np.cumsum(typical_prices * volumes)
+            cumulative_vol = np.cumsum(volumes)
+
+            # Avoid division by zero
+            safe_vol = np.where(cumulative_vol > 0, cumulative_vol, 1)
+            vwap_values = cumulative_tp_vol / safe_vol
+
+            current_vwap = float(vwap_values[-1])
+            current_price = float(ohlcv[-1, 4])
+
+            # VWAP standard deviation bands (upper/lower)
+            deviations = typical_prices - vwap_values[-len(typical_prices):]
+            if len(deviations) > 1:
+                vwap_std = float(np.std(deviations))
+            else:
+                vwap_std = 0
+
+            result = {
+                'vwap': current_vwap,
+                'upper_band': current_vwap + vwap_std,
+                'lower_band': current_vwap - vwap_std,
+                'price_vs_vwap': current_price - current_vwap,
+                'price_above_vwap': current_price > current_vwap,
+                'distance_percent': ((current_price - current_vwap) / current_vwap * 100)
+                                    if current_vwap > 0 else 0,
+            }
+
+            self._set_cached(cache_key, result)
+            return result
+        except Exception as e:
+            logger.error(f"VWAP calculation failed: {e}")
+            return None
+
+    def calculate_volume_momentum(self, lookback: int = 24,
+                                   timeframe: str = '1h') -> Optional[Dict[str, Any]]:
+        """
+        Analyze volume momentum: is volume increasing or decreasing?
+
+        Rising volume with price movement confirms the move.
+        Falling volume suggests the move may be exhausting.
+        Volume spikes often precede reversals.
+        """
+        cache_key = f"vol_momentum_{lookback}_{timeframe}"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            ohlcv = self._fetch_ohlcv(timeframe, lookback)
+            if ohlcv is None or len(ohlcv) < 10:
+                return None
+
+            volumes = ohlcv[:, 5]
+            closes = ohlcv[:, 4]
+
+            # Volume moving average
+            vol_ma_short = float(np.mean(volumes[-5:]))
+            vol_ma_long = float(np.mean(volumes[-20:]))
+
+            # Volume trend (ratio of short to long MA)
+            vol_ratio = vol_ma_short / vol_ma_long if vol_ma_long > 0 else 1.0
+
+            # Volume spike detection (current vs average)
+            current_vol = float(volumes[-1])
+            avg_vol = float(np.mean(volumes[:-1])) if len(volumes) > 1 else current_vol
+            vol_spike = current_vol / avg_vol if avg_vol > 0 else 1.0
+
+            # On-Balance Volume (OBV) trend
+            obv = np.zeros(len(closes), dtype=np.float32)
+            for i in range(1, len(closes)):
+                if closes[i] > closes[i - 1]:
+                    obv[i] = obv[i - 1] + volumes[i]
+                elif closes[i] < closes[i - 1]:
+                    obv[i] = obv[i - 1] - volumes[i]
+                else:
+                    obv[i] = obv[i - 1]
+
+            obv_trend = 'RISING' if obv[-1] > obv[-5] else 'FALLING'
+
+            result = {
+                'volume_ratio': round(vol_ratio, 2),
+                'volume_spike': round(vol_spike, 2),
+                'volume_trend': 'INCREASING' if vol_ratio > 1.1 else (
+                    'DECREASING' if vol_ratio < 0.9 else 'STABLE'),
+                'is_spike': vol_spike > 2.0,
+                'obv_trend': obv_trend,
+                'current_volume': current_vol,
+                'average_volume': avg_vol,
+            }
+
+            self._set_cached(cache_key, result)
+            return result
+        except Exception as e:
+            logger.error(f"Volume momentum calculation failed: {e}")
+            return None
+
+    # =========================================================================
+    # MULTI-TIMEFRAME ANALYSIS (v3.0)
+    # =========================================================================
+
+    def get_multi_timeframe_trend(self) -> Optional[Dict[str, Any]]:
+        """
+        Analyze trend across multiple timeframes (15m, 1h, 4h).
+
+        Agreement across timeframes increases confidence.
+        Disagreement suggests caution.
+        """
+        cache_key = "mtf_trend"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            timeframes = {
+                '15m': {'weight': 0.2, 'label': 'Short'},
+                '1h': {'weight': 0.5, 'label': 'Medium'},
+                '4h': {'weight': 0.3, 'label': 'Long'},
+            }
+
+            trends = {}
+            bullish_score = 0.0
+            bearish_score = 0.0
+
+            for tf, info in timeframes.items():
+                rsi = self.calculate_rsi_wilder(timeframe=tf)
+                macd = self.calculate_macd(timeframe=tf)
+
+                if rsi is None:
+                    continue
+
+                tf_trend = 'NEUTRAL'
+                tf_score = 0.0
+
+                if rsi < 30:
+                    tf_trend = 'OVERSOLD'
+                    tf_score = -0.5  # Bearish but potential reversal
+                elif rsi > 70:
+                    tf_trend = 'OVERBOUGHT'
+                    tf_score = 0.5  # Bullish but potential reversal
+                elif rsi < 45:
+                    tf_trend = 'BEARISH'
+                    tf_score = -(50 - rsi) / 50
+                elif rsi > 55:
+                    tf_trend = 'BULLISH'
+                    tf_score = (rsi - 50) / 50
+
+                # MACD confirmation
+                if macd:
+                    if macd['histogram'] > 0:
+                        tf_score += 0.2
+                    else:
+                        tf_score -= 0.2
+
+                trends[tf] = {
+                    'trend': tf_trend,
+                    'rsi': rsi,
+                    'score': tf_score,
+                }
+
+                if tf_score > 0:
+                    bullish_score += tf_score * info['weight']
+                else:
+                    bearish_score += abs(tf_score) * info['weight']
+
+            # Determine alignment
+            trend_directions = [t['trend'] for t in trends.values()]
+            bullish_count = sum(1 for t in trend_directions
+                                if t in ('BULLISH', 'OVERBOUGHT'))
+            bearish_count = sum(1 for t in trend_directions
+                                if t in ('BEARISH', 'OVERSOLD'))
+
+            if bullish_count == len(trends) and len(trends) > 0:
+                alignment = 'FULLY_BULLISH'
+            elif bearish_count == len(trends) and len(trends) > 0:
+                alignment = 'FULLY_BEARISH'
+            elif bullish_count > bearish_count:
+                alignment = 'MOSTLY_BULLISH'
+            elif bearish_count > bullish_count:
+                alignment = 'MOSTLY_BEARISH'
+            else:
+                alignment = 'MIXED'
+
+            confidence = abs(bullish_score - bearish_score)
+            aligned = alignment.startswith('FULLY_')
+
+            result = {
+                'timeframes': trends,
+                'alignment': alignment,
+                'aligned': aligned,
+                'confidence': min(1.0, confidence),
+                'bullish_score': bullish_score,
+                'bearish_score': bearish_score,
+                'grid_favorable': alignment == 'MIXED' or not aligned,
+            }
+
+            self._set_cached(cache_key, result)
+            return result
+        except Exception as e:
+            logger.error(f"Multi-timeframe analysis failed: {e}")
+            return None
+
+    def get_comprehensive_analysis(self) -> Optional[Dict[str, Any]]:
+        """
+        Get a comprehensive market analysis combining all indicators.
+
+        This is the primary method for the adaptive config engine to use.
+        Returns a unified view of all market conditions.
+        """
+        cache_key = "comprehensive"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            # Core indicators
+            rsi = self.calculate_rsi_wilder()
+            adx = self.calculate_adx()
+            bb = self.calculate_bollinger_bands()
+            macd = self.calculate_macd()
+            mr = self.calculate_mean_reversion_probability()
+            efficiency = self.calculate_grid_efficiency_score()
+            sr = self.find_support_resistance()
+            bias = self.should_adjust_grid_bias()
+            safety = self.is_safe_to_trade()
+
+            # Volume analysis
+            vol_profile = self.calculate_volume_profile()
+            vwap = self.calculate_vwap()
+            vol_momentum = self.calculate_volume_momentum()
+
+            # Multi-timeframe
+            mtf = self.get_multi_timeframe_trend()
+
+            result = {
+                'rsi': rsi,
+                'adx': adx,
+                'bb': bb,
+                'macd': macd,
+                'mean_reversion': mr,
+                'grid_efficiency': efficiency,
+                'support_resistance': sr,
+                'bias': bias,
+                'safety': safety,
+                'volume_profile': vol_profile,
+                'vwap': vwap,
+                'volume_momentum': vol_momentum,
+                'multi_timeframe': mtf,
+            }
+
+            self._set_cached(cache_key, result)
+            return result
+        except Exception as e:
+            logger.error(f"Comprehensive analysis failed: {e}")
+            return None

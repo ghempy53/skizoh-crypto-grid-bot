@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT v2.0 - Entry Point
+# SKIZOH CRYPTO GRID TRADING BOT v3.0 - Entry Point
 # =============================================================================
 
 import logging
@@ -66,16 +66,22 @@ logger = logging.getLogger(__name__)
 def print_banner():
     """Display welcome banner."""
     print("\n" + "="*70)
-    print("       SKIZOH CRYPTO GRID TRADING BOT v2.0")
-    print("       Profit-Optimized Smart Trading")
+    print("       SKIZOH CRYPTO GRID TRADING BOT v3.0")
+    print("       Smart Adaptive Trading for 24/7 Uptime")
     print("="*70)
-    print("\n🚀 Key Features:")
-    print("  • Asymmetric grid placement based on market bias")
-    print("  • Dynamic spacing adapted to volatility")
-    print("  • Grid efficiency scoring")
-    print("  • Mean reversion probability")
-    print("  • BNB fee discount support")
-    print("  • Memory-optimized for Raspberry Pi")
+    print("\nv3.0 Smart Features:")
+    print("  [Adaptive]   Continuous parameter blending across scenarios")
+    print("  [Regime]     Multi-timeframe market regime detection")
+    print("  [Resilience] Circuit breakers + auto-reconnect")
+    print("  [Volume]     VWAP + volume profile grid placement")
+    print("  [Safety]     Flash crash detection + portfolio heat")
+    print("  [Monitor]    Heartbeat system for external monitoring")
+    print("  [24/7]       Graceful degradation + auto-recovery")
+    print("\nCore Features:")
+    print("  [Grid]       Asymmetric grid placement with market bias")
+    print("  [Spacing]    Dynamic spacing adapted to volatility")
+    print("  [ETH]        ETH accumulation with profit reinvestment")
+    print("  [Pi]         Memory-optimized for Raspberry Pi")
     print("\n" + "="*70 + "\n")
 
 
