@@ -1,5 +1,5 @@
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Adaptive Configuration Engine v3.0
+# SKIZOH CRYPTO GRID TRADING BOT - Adaptive Configuration Engine v3.1
 # =============================================================================
 # SMART FEATURES:
 # - Continuous parameter interpolation (no jarring scenario switches)

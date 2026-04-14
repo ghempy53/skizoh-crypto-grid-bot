@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 #  =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v3.0
+# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v3.1
 # =============================================================================
 # PROFIT OPTIMIZATIONS:
 # - Asymmetric grid placement based on market bias
@@ -39,7 +39,7 @@
 # - Capital efficiency improvements
 # - BNB fee discount support
 #
-# SMART v3.0 FEATURES:
+# SMART v3.1 FEATURES:
 # - Adaptive configuration engine (continuous parameter blending)
 # - Multi-timeframe market regime detection
 # - Circuit breaker pattern for API resilience
@@ -469,7 +469,7 @@ class ProfitOptimizer:
 
 class SmartGridTradingBot:
     """
-    Smart grid trading bot v3.0 with adaptive intelligence.
+    Smart grid trading bot v3.1 with adaptive intelligence and profit optimization.
 
     KEY FEATURES:
     1. Asymmetric grid placement based on market bias
@@ -478,12 +478,13 @@ class SmartGridTradingBot:
     4. Profit zone acceleration
     5. Capital efficiency improvements
     6. Memory-efficient for Raspberry Pi
-    7. Adaptive config engine (v3.0) - continuous parameter blending
-    8. Market regime detection (v3.0) - multi-timeframe analysis
-    9. Circuit breaker resilience (v3.0) - 24/7 uptime
-    10. Flash crash protection (v3.0) - emergency response
-    11. Portfolio heat management (v3.0) - dynamic position sizing
-    12. Volume-aware grid placement (v3.0) - VWAP/volume profile
+    7. Adaptive config engine (v3.1) - continuous parameter blending
+    8. Market regime detection (v3.1) - multi-timeframe analysis
+    9. Circuit breaker resilience (v3.1) - 24/7 uptime
+    10. Flash crash protection (v3.1) - emergency response
+    11. Portfolio heat management (v3.1) - optimized position sizing
+    12. Volume-aware grid placement (v3.1) - VWAP/volume profile
+    13. Profit-optimized parameters (v3.1) - tighter spacing, faster compounding
     """
 
     DEFAULT_FEE_RATE = 0.001  # 0.1%
@@ -497,7 +498,7 @@ class SmartGridTradingBot:
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
     MAX_MEMORY_MB = 300  # Force GC if above this
 
-    # v3.0 resilience settings
+    # v3.1 resilience settings
     MAX_CONSECUTIVE_API_FAILURES = 10
     RECONNECT_DELAY_BASE = 5.0  # seconds
     DEGRADED_MODE_INTERVAL_MULTIPLIER = 3.0  # Slow down checks in degraded mode
@@ -541,7 +542,7 @@ class SmartGridTradingBot:
         self.market_analyzer = MarketAnalyzer(self.exchange, self.symbol)
 
         # =====================================================================
-        # v3.0: Smart Adaptive Systems
+        # v3.1: Smart Adaptive Systems
         # =====================================================================
 
         # Adaptive configuration engine (replaces discrete scenario switching)
@@ -576,7 +577,7 @@ class SmartGridTradingBot:
         self.session_health = SessionHealth()
 
         # =====================================================================
-        # End v3.0 systems
+        # End v3.1 systems
         # =====================================================================
 
         # Position tracking
@@ -1866,14 +1867,14 @@ class SmartGridTradingBot:
         self._print_final_summary()
     
     def _print_final_summary(self):
-        """Print trading session summary with v3.0 diagnostics."""
+        """Print trading session summary with v3.1 diagnostics."""
         try:
             current_price = self.exchange.fetch_ticker(self.symbol)['last'] or 0
             position = self.position_tracker.get_summary(current_price)
             runtime = datetime.now() - self.start_time if self.start_time else None
 
             logger.info("=" * 60)
-            logger.info("SESSION SUMMARY (v3.0)")
+            logger.info("SESSION SUMMARY (v3.1)")
             logger.info("=" * 60)
             logger.info(f"Strategy: {self.scenario_name}")
             if runtime:
@@ -1998,7 +1999,7 @@ class SmartGridTradingBot:
 
     def run(self):
         """
-        Main trading loop with v3.0 smart systems.
+        Main trading loop with v3.1 smart systems.
 
         Features:
         - Adaptive configuration with continuous parameter blending
@@ -2009,7 +2010,7 @@ class SmartGridTradingBot:
         - Heartbeat for external monitoring
         - Circuit breaker API protection
         """
-        logger.info(f"[Bot] Starting Grid Bot v3.0 - {self.scenario_name}")
+        logger.info(f"[Bot] Starting Grid Bot v3.1 - {self.scenario_name}")
         logger.info(f"[Bot] Base spacing: {self.base_grid_spacing}%, Fee: {self.fee_rate*100:.3f}%")
         logger.info(f"[Bot] Adaptive config: {'ENABLED' if self.enable_adaptive_config else 'DISABLED'}")
 
