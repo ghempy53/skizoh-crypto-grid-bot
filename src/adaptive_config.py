@@ -47,12 +47,12 @@ class AdaptiveParameterSet:
 
     # Safety bounds for all parameters
     BOUNDS = {
-        'grid_levels': (3, 24),
-        'grid_spacing_percent': (0.3, 5.0),
-        'investment_percent': (30, 85),
+        'grid_levels': (3, 26),             # Raised max from 24 for denser grids
+        'grid_spacing_percent': (0.25, 5.0), # Lower min (was 0.3) for BNB fee users
+        'investment_percent': (30, 88),      # Raised max from 85 for compounding
         'min_order_size_usdt': (5, 30),
         'stop_loss_percent': (5, 30),
-        'check_interval_seconds': (15, 300),
+        'check_interval_seconds': (12, 300), # Lower min (was 15) for fast regimes
         'atr_period': (6, 30),
         'volatility_threshold': (1.5, 15.0),
     }
@@ -308,27 +308,28 @@ class AdaptiveConfigEngine:
 
     # Time-of-day multipliers (UTC hours -> parameter adjustments)
     # Crypto markets have patterns: lower volume during Asian night hours (UTC 0-8)
+    # More aggressive during peak hours to capture more cycles
     TIME_ADJUSTMENTS = {
         # (start_hour, end_hour): {param: multiplier}
         (0, 6): {   # Late night / early morning UTC (low volume)
-            'grid_spacing_percent': 1.15,    # Wider spacing
-            'investment_percent': 0.85,       # Less capital deployed
-            'check_interval_seconds': 1.5,    # Slower checks
+            'grid_spacing_percent': 1.12,    # Wider spacing (reduced from 1.15)
+            'investment_percent': 0.88,       # Less capital deployed (was 0.85)
+            'check_interval_seconds': 1.4,    # Slower checks (was 1.5)
         },
         (6, 12): {   # Morning UTC (rising volume)
-            'grid_spacing_percent': 1.0,
-            'investment_percent': 1.0,
-            'check_interval_seconds': 1.0,
+            'grid_spacing_percent': 0.97,     # Slightly tighter — volume is building
+            'investment_percent': 1.02,
+            'check_interval_seconds': 0.95,
         },
         (12, 18): {  # Afternoon UTC (US markets open, peak volume)
-            'grid_spacing_percent': 0.95,     # Tighter spacing for more cycles
-            'investment_percent': 1.05,        # Slightly more capital
-            'check_interval_seconds': 0.85,    # Faster checks
+            'grid_spacing_percent': 0.88,     # Much tighter spacing for more cycles (was 0.95)
+            'investment_percent': 1.08,        # More capital deployed (was 1.05)
+            'check_interval_seconds': 0.8,     # Faster checks (was 0.85)
         },
         (18, 24): {  # Evening UTC (mixed volume)
-            'grid_spacing_percent': 1.05,
-            'investment_percent': 0.95,
-            'check_interval_seconds': 1.1,
+            'grid_spacing_percent': 1.02,     # Slightly wider (was 1.05)
+            'investment_percent': 0.97,        # Slightly less (was 0.95)
+            'check_interval_seconds': 1.05,    # Slightly slower (was 1.1)
         },
     }
 
@@ -521,13 +522,22 @@ class AdaptiveConfigEngine:
 
         elif regime.primary_regime == MarketRegime.BREAKOUT:
             # Wider spacing to avoid being run over
-            adjusted['grid_spacing_percent'] *= 1.3
-            adjusted['check_interval_seconds'] *= 0.7  # Check more frequently
+            adjusted['grid_spacing_percent'] *= 1.25  # Was 1.3 — slightly less conservative
+            adjusted['check_interval_seconds'] *= 0.65  # Check even more frequently
 
         elif regime.primary_regime == MarketRegime.MEAN_REVERTING:
-            # Tighter spacing for more cycle completions
-            adjusted['grid_spacing_percent'] *= 0.85
-            adjusted['grid_levels'] = min(adjusted.get('grid_levels', 10) * 1.2, 20)
+            # Mean reversion is the BEST regime for grid trading — maximize cycles
+            adjusted['grid_spacing_percent'] *= 0.75  # Much tighter (was 0.85)
+            adjusted['grid_levels'] = min(adjusted.get('grid_levels', 10) * 1.35, 22)  # More levels
+            adjusted['investment_percent'] = min(
+                adjusted.get('investment_percent', 70) * 1.08, 82  # Deploy more capital
+            )
+            adjusted['check_interval_seconds'] *= 0.8  # Check more frequently
+
+        elif regime.primary_regime == MarketRegime.RANGING:
+            # Ranging is also good for grid trading — tighten slightly
+            adjusted['grid_spacing_percent'] *= 0.92
+            adjusted['grid_levels'] = min(adjusted.get('grid_levels', 10) * 1.15, 20)
 
         elif regime.primary_regime in (MarketRegime.TRENDING_UP, MarketRegime.TRENDING_DOWN):
             # Trending: reduce grid density, favor wider spacing
