@@ -329,9 +329,9 @@ class ProfitOptimizer:
 
     def __init__(self, fee_rate: float = 0.001):
         self.fee_rate = fee_rate
-        self.min_profit_multiplier = 2.5  # Minimum profit vs fees
+        self.min_profit_multiplier = 1.8  # Tighter margin above fees = more completable cycles
         # ETH accumulation: tighter buy-back spacing means more ETH purchased per cycle
-        self.accumulation_rebuy_tightening = 0.15  # Buy back 15% closer than sell spacing
+        self.accumulation_rebuy_tightening = 0.22  # Buy back 22% closer than sell spacing (was 15%)
         
     def calculate_optimal_spacing(self, base_spacing: float, volatility: float,
                                    adx: float, rsi: float) -> float:
@@ -351,29 +351,33 @@ class ProfitOptimizer:
         # Volatility adjustment (0.5x to 2x multiplier)
         if volatility > 5:
             volatility_mult = 1.0 + (volatility - 5) * 0.1  # +10% per 1% vol above 5%
-        elif volatility < 2:
-            volatility_mult = 0.8  # Tighter in low vol
+        elif volatility < 1.5:
+            volatility_mult = 0.75  # Much tighter in very low vol — cycles complete faster
+        elif volatility < 2.5:
+            volatility_mult = 0.82  # Tighter in low vol
         else:
             volatility_mult = 1.0
-        
+
         optimal *= min(2.0, max(0.5, volatility_mult))
-        
+
         # Trend adjustment (ADX)
         if adx > 35:
             optimal *= 1.5  # Much wider in strong trends
         elif adx > 25:
             optimal *= 1.2  # Moderately wider
         elif adx < 15:
-            optimal *= 0.9  # Tighter in ranging markets
-        
+            optimal *= 0.85  # Tighter in ranging markets — ideal for grid trading
+        elif adx < 20:
+            optimal *= 0.9  # Low trend strength — slightly tighter
+
         # RSI adjustment: tighter spacing at mean reversion zones
         # where grid cycles complete faster
         if rsi < 25 or rsi > 75:
-            optimal *= 0.8  # Strong mean reversion zone - much tighter
+            optimal *= 0.72  # Strong mean reversion zone — very tight for rapid cycles
         elif rsi < 30 or rsi > 70:
-            optimal *= 0.85  # Oversold/overbought - tighter
+            optimal *= 0.8  # Oversold/overbought — tighter
         elif 30 <= rsi < 40 or 60 < rsi <= 70:
-            optimal *= 0.92  # Mildly extended - slightly tighter
+            optimal *= 0.88  # Mildly extended — slightly tighter
 
         return max(min_spacing, round(optimal, 3))
     
@@ -398,8 +402,8 @@ class ProfitOptimizer:
         buy_levels = []
         cumulative_offset = 0.0
         for i in range(1, num_buys + 1):
-            # Each gap is 10% wider than the previous
-            gap = spacing * (1 + (i - 1) * 0.1)
+            # Each gap is 5% wider than the previous (was 10%) — denser grid near price
+            gap = spacing * (1 + (i - 1) * 0.05)
             cumulative_offset += gap
             price = current_price * (1 - cumulative_offset / 100)
             if price > 0:
@@ -409,7 +413,7 @@ class ProfitOptimizer:
         sell_levels = []
         cumulative_offset = 0.0
         for i in range(1, num_sells + 1):
-            gap = spacing * (1 + (i - 1) * 0.1)
+            gap = spacing * (1 + (i - 1) * 0.05)
             cumulative_offset += gap
             price = current_price * (1 + cumulative_offset / 100)
             sell_levels.append(round(price, 2))
@@ -429,11 +433,12 @@ class ProfitOptimizer:
         if price_diff_pct < 0.1:
             return False
         
-        # For buys: wait if momentum is negative (price likely to fall)
-        # For sells: wait if momentum is positive (price likely to rise)
-        if is_buy and momentum < -0.5:
+        # For buys: wait if momentum is strongly negative (price likely to fall more)
+        # For sells: wait if momentum is strongly positive (price likely to rise more)
+        # Relaxed thresholds to avoid missing legitimate entries
+        if is_buy and momentum < -0.8:
             return True
-        if not is_buy and momentum > 0.5:
+        if not is_buy and momentum > 0.8:
             return True
         
         return False
@@ -447,15 +452,15 @@ class ProfitOptimizer:
         High volatility = higher target (capture bigger moves)
         """
         base_target = entry_price * (1 + base_spacing / 100)
-        
-        # Volatility bonus
-        if volatility > 4:
-            vol_bonus = (volatility - 4) * 0.1  # +0.1% per 1% vol above 4%
+
+        # Volatility bonus — capture more in volatile conditions
+        if volatility > 3:
+            vol_bonus = (volatility - 3) * 0.12  # +0.12% per 1% vol above 3% (was 4%, 0.1%)
             base_target *= (1 + vol_bonus / 100)
-        
-        # Age penalty (reduce target for old positions)
-        if position_age_hours > 24:
-            age_factor = max(0.5, 1 - (position_age_hours - 24) * 0.01)
+
+        # Age penalty — start reducing target earlier to free capital from stuck positions
+        if position_age_hours > 8:
+            age_factor = max(0.4, 1 - (position_age_hours - 8) * 0.015)
             target_reduction = (base_target - entry_price) * (1 - age_factor)
             base_target -= target_reduction
         
@@ -483,10 +488,10 @@ class SmartGridTradingBot:
 
     DEFAULT_FEE_RATE = 0.001  # 0.1%
     TREND_PAUSE_SECONDS = 1800  # 30 minutes
-    REPOSITION_THRESHOLD_MULTIPLIER = 2.0  # Reduced for more responsive repositioning
-    MIN_GRID_UPDATE_INTERVAL = 300  # 5 minutes (reduced from 10)
-    FEE_SAFETY_FACTOR = 2.5
-    STALE_ORDER_SECONDS = 3600  # Cancel unfilled orders older than 1 hour
+    REPOSITION_THRESHOLD_MULTIPLIER = 1.5  # More responsive repositioning keeps grid centered on price
+    MIN_GRID_UPDATE_INTERVAL = 240  # 4 minutes - faster grid adaptation to price moves
+    FEE_SAFETY_FACTOR = 1.8  # Tighter margin above fees = more cycles complete profitably
+    STALE_ORDER_SECONDS = 1800  # 30 min - free capital faster for redeployment at current prices
 
     # Pi-specific settings
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
@@ -968,11 +973,13 @@ class SmartGridTradingBot:
             profit_percent = (total_pnl / self.initial_investment) * 100
             
             if profit_percent > 25:
-                return min(85, self.investment_percent + 6)
+                return min(88, self.investment_percent + 8)  # More aggressive compounding
             elif profit_percent > 15:
+                return min(85, self.investment_percent + 6)
+            elif profit_percent > 8:
                 return min(82, self.investment_percent + 4)
-            elif profit_percent > 5:
-                return min(78, self.investment_percent + 2)
+            elif profit_percent > 3:
+                return min(80, self.investment_percent + 2)  # Start compounding earlier
             elif profit_percent < -10:
                 return max(50, self.investment_percent - 10)
             elif profit_percent < -5:
@@ -1042,11 +1049,13 @@ class SmartGridTradingBot:
             if efficiency:
                 eff_score = efficiency['score']
                 base_levels = adapted_levels
-                if eff_score >= 80:
-                    adjusted_levels = min(int(base_levels * 1.3), 24)
-                elif eff_score >= 60:
+                if eff_score >= 85:
+                    adjusted_levels = min(int(base_levels * 1.5), 24)  # Excellent — maximize grid density
+                elif eff_score >= 70:
+                    adjusted_levels = min(int(base_levels * 1.3), 24)  # Good — increase density
+                elif eff_score >= 55:
                     adjusted_levels = base_levels
-                elif eff_score >= 40:
+                elif eff_score >= 35:
                     adjusted_levels = max(int(base_levels * 0.7), 3)
                 else:
                     adjusted_levels = max(int(base_levels * 0.5), 2)
@@ -1724,13 +1733,14 @@ class SmartGridTradingBot:
             return
 
         realized = self.position_tracker.realized_pnl
-        # Only reinvest when realized profit > 2% of initial investment
-        profit_threshold = self.initial_investment * 0.02
+        # Reinvest when realized profit > 1% of initial investment (was 2%)
+        profit_threshold = self.initial_investment * 0.01
         if realized < profit_threshold:
             return
 
-        # Reinvest 30% of realized profits beyond the threshold
-        reinvest_amount = (realized - profit_threshold) * 0.30
+        # Reinvest 45% of realized profits beyond the threshold (was 30%)
+        # More aggressive compounding significantly accelerates growth
+        reinvest_amount = (realized - profit_threshold) * 0.45
         if reinvest_amount < self.min_order_size_usdt:
             return
 
@@ -2128,8 +2138,8 @@ class SmartGridTradingBot:
                 if not self.check_stop_loss(portfolio):
                     break
 
-                # Reinvest USDT profits into ETH periodically
-                if self.cycle_count % 10 == 0:
+                # Reinvest USDT profits into ETH more frequently for faster compounding
+                if self.cycle_count % 5 == 0:
                     self.reinvest_profits_to_eth(current_price)
 
                 # ============================================================

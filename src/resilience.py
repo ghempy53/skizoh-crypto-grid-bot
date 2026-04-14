@@ -405,27 +405,28 @@ class PortfolioHeatTracker:
         """
         heat = 0.0
 
-        # Position count heat (0-25)
-        position_heat = min(25, open_positions * 2.5)
+        # Position count heat (0-20) — reduced from 2.5 to 1.8 per position
+        # Grid bots naturally hold many positions; penalizing too early reduces profitability
+        position_heat = min(20, open_positions * 1.8)
         self._components['positions'] = position_heat
         heat += position_heat
 
         # Unrealized loss heat (0-30)
         if total_investment > 0 and unrealized_pnl < 0:
             loss_pct = abs(unrealized_pnl / total_investment) * 100
-            loss_heat = min(30, loss_pct * 3)
+            loss_heat = min(30, loss_pct * 2.5)  # Reduced from 3x — grid positions recover
             self._components['unrealized_loss'] = loss_heat
             heat += loss_heat
         else:
             self._components['unrealized_loss'] = 0
 
-        # Volatility heat (0-25)
-        vol_heat = min(25, max(0, (volatility - 2) * 5))
+        # Volatility heat (0-25) — higher threshold before volatility adds heat
+        vol_heat = min(25, max(0, (volatility - 3) * 4.5))  # Was vol-2 * 5
         self._components['volatility'] = vol_heat
         heat += vol_heat
 
-        # Drawdown heat (0-20)
-        dd_heat = min(20, drawdown_pct * 2)
+        # Drawdown heat (0-25) — increased cap for drawdown significance
+        dd_heat = min(25, drawdown_pct * 2)
         self._components['drawdown'] = dd_heat
         heat += dd_heat
 
@@ -436,24 +437,28 @@ class PortfolioHeatTracker:
         """
         Get a multiplier for position sizing based on current heat.
 
-        Heat 0-30: 1.0x (full size)
-        Heat 30-60: 0.7x (reduced)
-        Heat 60-80: 0.4x (significantly reduced)
-        Heat 80+: 0.2x (minimal)
+        Shifted thresholds higher to allow grid bots to maintain positions
+        longer before cutting size. Grid trading naturally holds many
+        positions — penalizing too early starves the grid of capital.
+
+        Heat 0-40: 1.0x (full size)
+        Heat 40-65: 0.75x (moderately reduced)
+        Heat 65-85: 0.45x (significantly reduced)
+        Heat 85+: 0.25x (minimal)
         """
         heat = self._current_heat
-        if heat <= 30:
+        if heat <= 40:
             return 1.0
-        elif heat <= 60:
-            return 0.7 - (heat - 30) * 0.01  # 0.7 to 0.4
-        elif heat <= 80:
-            return 0.4 - (heat - 60) * 0.01  # 0.4 to 0.2
+        elif heat <= 65:
+            return 0.75 - (heat - 40) * 0.012  # 0.75 to 0.45
+        elif heat <= 85:
+            return 0.45 - (heat - 65) * 0.01  # 0.45 to 0.25
         else:
-            return 0.2
+            return 0.25
 
     def should_reduce_exposure(self) -> bool:
         """Check if we should actively reduce positions."""
-        return self._current_heat > 70
+        return self._current_heat > 80
 
     def get_status(self) -> Dict[str, Any]:
         """Get heat status."""
