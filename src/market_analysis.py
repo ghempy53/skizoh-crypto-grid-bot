@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v3.0
+# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v3.1
 # =============================================================================
 # PROFIT OPTIMIZATIONS:
 # - Volume-weighted momentum indicator

@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT v3.0 - Entry Point
+# SKIZOH CRYPTO GRID TRADING BOT v3.1 - Entry Point
 # =============================================================================
 
 import logging
@@ -66,10 +66,10 @@ logger = logging.getLogger(__name__)
 def print_banner():
     """Display welcome banner."""
     print("\n" + "="*70)
-    print("       SKIZOH CRYPTO GRID TRADING BOT v3.0")
-    print("       Smart Adaptive Trading for 24/7 Uptime")
+    print("       SKIZOH CRYPTO GRID TRADING BOT v3.1")
+    print("       Profit-Optimized Smart Adaptive Trading")
     print("="*70)
-    print("\nv3.0 Smart Features:")
+    print("\nv3.1 Smart Features:")
     print("  [Adaptive]   Continuous parameter blending across scenarios")
     print("  [Regime]     Multi-timeframe market regime detection")
     print("  [Resilience] Circuit breakers + auto-reconnect")
