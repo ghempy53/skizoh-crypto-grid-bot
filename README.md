@@ -728,10 +728,23 @@ sudo reboot
 {
   "ipv6": false,
   "dns": ["8.8.8.8", "1.1.1.1"],
-  "dns-opts": ["ndots:0", "single-request"]
+  "dns-opts": ["ndots:0", "single-request"],
+  "features": {"buildkit": false}
 }
 ```
 Then: `sudo systemctl restart docker`
+
+Why `buildkit: false`? BuildKit runs in its own container with a Go-based
+DNS resolver that **ignores `/etc/gai.conf`** and does not fall back cleanly
+from IPv6 to IPv4 when the kernel rejects `AF_INET6` sockets. You will see
+errors like:
+```
+failed to copy: httpReadSeeker: failed open: failed to do request:
+  dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
+```
+even after every other IPv6 setting is correct. The legacy builder (used
+when BuildKit is off) pulls through dockerd directly and handles IPv6-less
+networks correctly.
 
 **5. Clear stale buildx state**
 ```bash
