@@ -679,25 +679,29 @@ dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
 failed to copy: httpReadSeeker: failed open: failed to do request
 ```
 
-This is an IPv6 connectivity issue. Docker/BuildKit is trying to reach
-registries over IPv6 but your network (or the Pi's kernel) doesn't route IPv6.
+This is an IPv6 connectivity issue. Docker is trying to reach registries over
+IPv6 but your network (or the Pi's kernel) doesn't route IPv6.
+
+> ⚠️  **A REBOOT IS REQUIRED whenever you hit this error**, even on subsequent
+> occurrences. The fix touches the kernel cmdline, sysctl, systemd unit
+> environments, and the DNS resolver — these only take effect together after a
+> full reboot. Restarting Docker alone is not enough.
 
 **Recommended: use the helper (fixes everything in one step)**
 ```bash
 ./docker-helper.sh fix-ipv6
-sudo reboot        # only needed first time, to apply the cmdline.txt change
+sudo reboot                   # REQUIRED — do not skip, even on re-runs
 ./docker-helper.sh rebuild
 ```
 
 The helper applies all of the following. If you prefer to do it manually, here
-is exactly what it does — **all five pieces are usually required** on a fresh
+is exactly what it does — **all seven pieces are usually required** on a fresh
 Pi OS Lite install, which is why piecemeal fixes tend to fail:
 
 **1. Prefer IPv4 in glibc's name resolver (`/etc/gai.conf`)**
 
-This is the step most guides miss. Without it, Docker BuildKit receives AAAA
-records first from DNS and attempts IPv6 connections that fail, even when
-IPv6 is disabled on your interfaces.
+Without it, the resolver returns AAAA records first and Docker attempts IPv6
+connections that fail, even when IPv6 is disabled on your interfaces.
 ```bash
 echo "precedence ::ffff:0:0/96  100" | sudo tee -a /etc/gai.conf
 ```
@@ -720,7 +724,7 @@ new line is a common mistake — the bootloader will ignore it.
 sudo nano /boot/firmware/cmdline.txt
 # Append to the END of the existing line (preceded by a single space):
 #   ... ipv6.disable=1
-sudo reboot
+sudo reboot                   # kernel changes require a reboot to apply
 ```
 
 **4. Configure the Docker daemon (`/etc/docker/daemon.json`)**
@@ -736,27 +740,59 @@ Then: `sudo systemctl restart docker`
 
 Why `buildkit: false`? BuildKit runs in its own container with a Go-based
 DNS resolver that **ignores `/etc/gai.conf`** and does not fall back cleanly
-from IPv6 to IPv4 when the kernel rejects `AF_INET6` sockets. You will see
-errors like:
-```
-failed to copy: httpReadSeeker: failed open: failed to do request:
-  dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
-```
-even after every other IPv6 setting is correct. The legacy builder (used
-when BuildKit is off) pulls through dockerd directly and handles IPv6-less
-networks correctly.
+from IPv6 to IPv4 when the kernel rejects `AF_INET6` sockets. The legacy
+builder (used when BuildKit is off) pulls through dockerd directly and handles
+IPv6-less networks correctly.
 
-**5. Clear stale buildx state**
+**5. Force dockerd + containerd to use glibc's resolver (systemd drop-ins)**
+
+Even with BuildKit off, dockerd/containerd are Go programs whose default
+`netgo` resolver ignores `/etc/gai.conf`. They return AAAA records first and
+the `httpReadSeeker` blob-fetch path fails with `EAFNOSUPPORT` instead of
+falling back to IPv4. Setting `GODEBUG=netdns=cgo+1` routes DNS through glibc,
+which honours the `gai.conf` priority from step 1.
+```bash
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/10-ipv4-resolver.conf <<'EOF'
+[Service]
+Environment=GODEBUG=netdns=cgo+1
+EOF
+sudo mkdir -p /etc/systemd/system/containerd.service.d
+sudo tee /etc/systemd/system/containerd.service.d/10-ipv4-resolver.conf <<'EOF'
+[Service]
+Environment=GODEBUG=netdns=cgo+1
+EOF
+sudo systemctl daemon-reload
+```
+
+**6. Drop AAAA records entirely (`/etc/resolv.conf` + dhcpcd hook)**
+
+Belt-and-suspenders: tell glibc's stub resolver to skip AAAA lookups, so
+nothing upstream ever sees an IPv6 address for `registry-1.docker.io`. Also
+persist the option via `/etc/resolvconf.conf` and a `dhcpcd` hook so a DHCP
+lease renewal doesn't wipe it.
+```bash
+echo 'options single-request no-aaaa' | sudo tee -a /etc/resolv.conf
+echo 'resolv_conf_options="single-request no-aaaa"' | sudo tee -a /etc/resolvconf.conf
+```
+
+**7. Clear stale buildx state**
 ```bash
 docker buildx prune -af
 ```
 
-**Verification after reboot**
+**Reboot, then verify**
 ```bash
+sudo reboot                                    # REQUIRED — apply all changes
+# --- after reboot ---
 ip -6 addr                                     # no global IPv6 addresses
 docker info | grep -i ipv6                     # IPv6: off / false
 ./docker-helper.sh rebuild                     # build should succeed
 ```
+
+If the rebuild still fails after a reboot, re-run `./docker-helper.sh fix-ipv6`
+— the final step pulls the base image as a live test and will tell you exactly
+which piece didn't apply.
 
 ---
 
