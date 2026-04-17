@@ -211,7 +211,7 @@ class PositionTracker:
         if quantity <= 0 or price <= 0:
             logger.warning(f"Invalid position: quantity={quantity}, price={price}")
             return
-        
+
         cost_basis = (quantity * price) + fee
         self.positions.append({
             'quantity': quantity,
@@ -219,10 +219,11 @@ class PositionTracker:
             'cost_basis': cost_basis,
             'timestamp': datetime.now()
         })
-        self.total_quantity += quantity
-        self.total_cost += cost_basis
         self.total_fees_paid += fee
-        
+        # Re-derive totals from positions so the accumulators never drift from
+        # the per-lot values even without a _save_state() call.
+        self._recalculate_totals()
+
         logger.debug(f"Added position: {quantity} @ ${price:.2f}, cost basis: ${cost_basis:.2f}")
         self._save_state()
     
@@ -242,33 +243,32 @@ class PositionTracker:
         
         remaining = quantity
         total_cost_basis = 0.0
-        
+
         while remaining > 0 and self.positions:
             oldest = self.positions[0]
-            
+
             if oldest['quantity'] <= remaining:
                 total_cost_basis += oldest['cost_basis']
                 remaining -= oldest['quantity']
-                self.total_quantity -= oldest['quantity']
-                self.total_cost -= oldest['cost_basis']
                 self.positions.popleft()
             else:
                 if oldest['quantity'] > 0:
                     fraction = remaining / oldest['quantity']
                     used_cost = oldest['cost_basis'] * fraction
                     total_cost_basis += used_cost
-                    
+
                     oldest['quantity'] -= remaining
                     oldest['cost_basis'] -= used_cost
-                    self.total_quantity -= remaining
-                    self.total_cost -= used_cost
                 remaining = 0
-        
+
         proceeds = (quantity * sell_price) - fee
         pnl = proceeds - total_cost_basis
         self.realized_pnl += pnl
         self.total_fees_paid += fee
-        
+        # Re-derive totals from positions instead of maintaining a parallel
+        # running accumulator that drifts due to float rounding over time.
+        self._recalculate_totals()
+
         logger.debug(f"Closed position: {quantity} @ ${sell_price:.2f}, P&L: ${pnl:.2f}")
         self._save_state()
         
@@ -424,9 +424,11 @@ class ProfitOptimizer:
                                       momentum: float, is_buy: bool) -> bool:
         """
         Determine if we should wait for a better entry price.
-        
+
         Uses momentum to predict short-term price movement.
         """
+        if current_price <= 0:
+            return False
         price_diff_pct = abs(current_price - target_price) / current_price * 100
         
         # If very close to target, don't wait
@@ -615,6 +617,8 @@ class SmartGridTradingBot:
         self.last_grid_update = time.time()
         self.current_volatility = 0.0
         self.current_adx = 0.0
+        self._last_volatility_update = 0.0
+        self.MAX_INDICATOR_STALENESS = 300  # 5 min; beyond this treat as unknown
         self._last_market_conditions: Optional[Dict[str, Any]] = None
         self._last_market_conditions_time = 0.0
         self._market_conditions_ttl = 30  # reuse for 30s
@@ -906,6 +910,7 @@ class SmartGridTradingBot:
 
             self.current_volatility = volatility
             self.current_adx = adx
+            self._last_volatility_update = time.monotonic()
 
             result = {
                 'price': current_price,
@@ -992,9 +997,11 @@ class SmartGridTradingBot:
     
     def should_reposition_grid(self, current_price: float) -> bool:
         """Check if grid needs repositioning."""
-        if not self.grid_center_price or current_price <= 0:
+        if (not self.grid_center_price
+                or self.grid_center_price <= 0
+                or current_price <= 0):
             return False
-        
+
         price_move_pct = abs((current_price - self.grid_center_price) / self.grid_center_price) * 100
         threshold = self.grid_spacing_percent * self.REPOSITION_THRESHOLD_MULTIPLIER
         time_since_update = time.time() - self.last_grid_update
@@ -1121,6 +1128,11 @@ class SmartGridTradingBot:
                 # and avoid phantom P&L when funds are locked in pre-existing orders.
                 self.initial_investment = balances['quote_total'] + (balances['base_total'] * current_price)
                 self.start_time = datetime.now()
+                # Seed peak_value from the starting portfolio so drawdown is
+                # measured from the true high-water mark rather than whichever
+                # value happens to be observed first after restart.
+                if self.peak_value <= 0:
+                    self.peak_value = self.initial_investment
 
             if reposition:
                 logger.info("[Grid] Repositioning grid")
@@ -1248,6 +1260,10 @@ class SmartGridTradingBot:
 
         snapped = []
         for price in prices:
+            if price <= 0:
+                snapped.append(price)
+                continue
+
             best_hvn = None
             best_distance = float('inf')
 
@@ -1386,16 +1402,23 @@ class SmartGridTradingBot:
     
     def _handle_filled_order(self, order_id: str, order_info: Dict):
         """Handle filled order with profit tracking."""
+        if order_id not in self.active_orders:
+            return
         level = self.active_orders[order_id]['level']
         level['filled'] = True
-        
+
         side = order_info['side']
         amount = float(order_info.get('filled', 0))
         price = float(order_info.get('average') or order_info.get('price', 0))
-        
+
         if amount <= 0 or price <= 0:
             del self.active_orders[order_id]
             return
+
+        # Reflect actual filled quantity on the level so any later inspection
+        # (logging, recovery, audit) reports what was really traded rather than
+        # the original grid-level sizing.
+        level['quantity'] = amount
         
         # Calculate fee
         fee = self._calculate_fee(order_info, amount, price)
@@ -1424,7 +1447,7 @@ class SmartGridTradingBot:
                                     notes='Grid sell')
         
         del self.active_orders[order_id]
-        self.place_opposite_order(level, price, amount)
+        self.place_opposite_order(level, price, amount, fee)
     
     def _calculate_fee(self, order_info: Dict, amount: float, price: float) -> float:
         """Calculate trading fee."""
@@ -1449,17 +1472,32 @@ class SmartGridTradingBot:
         
         return fee
     
-    def place_opposite_order(self, filled_level: Dict, fill_price: float, filled_qty: float):
-        """Place opposite order after fill with dynamic profit targets."""
+    def place_opposite_order(self, filled_level: Dict, fill_price: float,
+                             filled_qty: float, filled_fee: float = 0.0):
+        """Place opposite order after fill with dynamic profit targets.
+
+        ``filled_fee`` is the actual USDT-denominated fee from the filled order,
+        used for accurate opposite-side sizing instead of the assumed
+        ``self.fee_rate``.
+        """
         try:
             if fill_price <= 0 or filled_qty <= 0:
                 return
 
             if filled_level['type'] == 'buy':
-                # Sell at a dynamic profit target based on volatility
+                # Sell at a dynamic profit target based on volatility.
+                # If the cached volatility is stale (market fetch has been
+                # failing), fall back to 0 so the target reverts to the pure
+                # spacing-based calculation rather than using old readings.
+                vol_age = time.monotonic() - self._last_volatility_update
+                effective_volatility = (
+                    self.current_volatility
+                    if vol_age <= self.MAX_INDICATOR_STALENESS
+                    else 0.0
+                )
                 new_price = self.profit_optimizer.calculate_profit_target(
                     fill_price, self.grid_spacing_percent,
-                    self.current_volatility, 0  # New position, age = 0
+                    effective_volatility, 0  # New position, age = 0
                 )
                 side = 'sell'
                 quantity = filled_qty
@@ -1476,9 +1514,15 @@ class SmartGridTradingBot:
                 adjustment = rebuy_spacing / 100
                 new_price = fill_price * (1 - adjustment)
                 side = 'buy'
-                # Account for the fee paid on the sell to avoid over-allocating USDT
-                net_proceeds = filled_qty * fill_price * (1 - self.fee_rate)
-                quantity = net_proceeds / new_price
+                # Account for the actual fee paid on the sell to avoid
+                # over-allocating USDT. Fall back to the assumed fee rate only
+                # if no real fee was captured.
+                gross_proceeds = filled_qty * fill_price
+                if filled_fee and filled_fee > 0:
+                    net_proceeds = gross_proceeds - filled_fee
+                else:
+                    net_proceeds = gross_proceeds * (1 - self.fee_rate)
+                quantity = net_proceeds / new_price if new_price > 0 else 0
 
             if quantity <= 0 or new_price <= 0:
                 return
@@ -1766,29 +1810,71 @@ class SmartGridTradingBot:
                 side='buy', amount=quantity
             )
 
-            fill_price = float(order.get('average') or order.get('price') or current_price)
-            fee = self._calculate_fee(order, quantity, fill_price)
-            self.position_tracker.add_position(quantity, fill_price, fee)
-
-            base_currency = self.symbol.split('/')[0]
-            self.log_tax_transaction(
-                'BUY', base_currency, quantity, fill_price, fee,
-                order.get('id', 'reinvest'),
-                cost_basis=quantity * fill_price + fee,
-                notes='Profit reinvestment into ETH'
-            )
-
-            # Reset realized P&L tracking so we don't reinvest the same profit twice
+            # Commit the reinvestment draw immediately after the exchange accepts
+            # the order. If downstream bookkeeping (fee calc, position add, tax log)
+            # raises, the order is already live — deferring the decrement would let
+            # the same realized profit be reinvested again on the next cycle.
             self.position_tracker.realized_pnl -= reinvest_amount
 
-            logger.info(
-                f"💎 REINVESTED ${reinvest_amount:.2f} profit → "
-                f"{quantity:.6f} {base_currency} @ ${fill_price:.2f}"
-            )
+            try:
+                fill_price = float(order.get('average') or order.get('price') or current_price)
+                fee = self._calculate_fee(order, quantity, fill_price)
+                self.position_tracker.add_position(quantity, fill_price, fee)
+
+                base_currency = self.symbol.split('/')[0]
+                self.log_tax_transaction(
+                    'BUY', base_currency, quantity, fill_price, fee,
+                    order.get('id', 'reinvest'),
+                    cost_basis=quantity * fill_price + fee,
+                    notes='Profit reinvestment into ETH'
+                )
+
+                logger.info(
+                    f"💎 REINVESTED ${reinvest_amount:.2f} profit → "
+                    f"{quantity:.6f} {base_currency} @ ${fill_price:.2f}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Reinvestment order placed but post-order bookkeeping failed: {e}. "
+                    f"Order id: {order.get('id', 'unknown')}"
+                )
         except ccxt.InsufficientFunds:
             logger.debug("Insufficient funds for profit reinvestment")
+        except (ccxt.NetworkError, ccxt.ExchangeError) as e:
+            logger.warning(f"Profit reinvestment failed (exchange): {e}")
         except Exception as e:
             logger.warning(f"Profit reinvestment failed: {e}")
+
+    def _reconcile_with_exchange(self):
+        """Reconcile local state with exchange state on startup.
+
+        After a crash/restart, the saved position state can diverge from
+        exchange reality (orders filled, partial fills, manual cancels while
+        offline). Fetch open orders from the exchange and clear any locally
+        tracked orders that the exchange no longer reports as open so they
+        don't block fresh grid placement.
+        """
+        try:
+            open_orders = self.exchange.fetch_open_orders(self.symbol)
+            open_ids = {o['id'] for o in open_orders}
+            stale_local = [oid for oid in list(self.active_orders.keys())
+                           if oid not in open_ids]
+            for oid in stale_local:
+                try:
+                    del self.active_orders[oid]
+                except KeyError:
+                    pass
+            # Drop orphaned grid levels that referenced cleared order ids.
+            for level in self.grid_levels:
+                if level.get('order_id') and level['order_id'] not in open_ids:
+                    level['order_id'] = None
+
+            logger.info(
+                f"[Reconcile] Exchange reports {len(open_orders)} open orders; "
+                f"cleared {len(stale_local)} stale local entries"
+            )
+        except Exception as e:
+            logger.warning(f"[Reconcile] Startup reconciliation failed (continuing): {e}")
 
     def cancel_stale_orders(self):
         """Cancel orders that have been open too long without filling.
@@ -1970,6 +2056,16 @@ class SmartGridTradingBot:
         except Exception:
             pass
 
+        # Touch a zero-content liveness sentinel for the Docker HEALTHCHECK
+        # to detect. Separate from the JSON heartbeat so the healthcheck
+        # doesn't depend on JSON parsing being available in the image.
+        try:
+            alive_path = self.data_dir / '.alive'
+            alive_path.touch(exist_ok=True)
+            os.utime(alive_path, None)
+        except Exception:
+            pass
+
     def _log_smart_status(self, current_price: float):
         """Log comprehensive smart bot status (v3.0)."""
         try:
@@ -2021,6 +2117,11 @@ class SmartGridTradingBot:
             if s['name'] == self.scenario_name:
                 self.current_scenario_index = i
                 break
+
+        # Reconcile with exchange reality before resuming. Saved local state
+        # may be stale after a crash/restart (fills, cancels, partial fills
+        # happen while we're offline).
+        self._reconcile_with_exchange()
 
         if not self.calculate_grid_levels():
             logger.error("Failed to initialize grid")

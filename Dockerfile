@@ -88,8 +88,13 @@ USER gridbot
 VOLUME ["/app/data"]
 
 # Health check (reduced frequency for Pi)
+# Verify the trading loop is actually progressing, not just that the Python
+# interpreter can import libraries. The bot touches /app/data/.alive on every
+# cycle; missing or stale (>10 min) means the loop has stalled.
 HEALTHCHECK --interval=180s --timeout=20s --start-period=90s --retries=2 \
-    CMD python3 -c "import ccxt; import numpy; print('ok')" || exit 1
+    CMD test -f /app/data/.alive \
+        && find /app/data/.alive -mmin -10 | grep -q . \
+        || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
 CMD ["run"]

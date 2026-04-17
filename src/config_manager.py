@@ -153,7 +153,10 @@ class ConfigManager:
                 selection = input(f"\nSelect [0-{len(self.scenarios)-1}] or 'q' to quit: ")
                 
                 if selection.lower() == 'q':
-                    exit(0)
+                    # Raise KeyboardInterrupt instead of exit(0) so the caller
+                    # can choose how to handle a user-requested quit (for
+                    # example, test harnesses can intercept it).
+                    raise KeyboardInterrupt("User selected quit at scenario prompt")
                 
                 idx = int(selection)
                 if 0 <= idx < len(self.scenarios):
