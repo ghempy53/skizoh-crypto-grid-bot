@@ -4,6 +4,255 @@ A profit-optimized, Raspberry Pi-friendly cryptocurrency grid trading bot for Bi
 
 ---
 
+## Setup
+
+End-to-end setup for a fresh **Raspberry Pi OS Lite (Bookworm, 64-bit)** install.
+Follow every step in order — skipping any of them is the #1 source of "it doesn't
+work" reports. If you're on a regular desktop Linux, every step still applies
+except the Pi-specific hardware/IPv6 bits (flagged 🍓 below).
+
+> **TL;DR for returning users:**
+> ```bash
+> cd ~/skizoh-crypto-grid-bot
+> ./docker-helper.sh fix-ipv6 && sudo reboot        # 🍓 Pi OS Lite only
+> # after reboot:
+> cp src/priv/config.json.template src/priv/config.json
+> chmod 600 src/priv/config.json
+> nano src/priv/config.json                          # paste your API keys
+> ./docker-helper.sh fix-permissions
+> ./docker-helper.sh rebuild                         # build + start
+> ./docker-helper.sh logs                            # verify
+> ```
+
+### 0. Prerequisites
+
+You need, on the Pi:
+
+| Requirement | How to check | How to install |
+|---|---|---|
+| Raspberry Pi OS Lite (Bookworm, 64-bit recommended) | `cat /etc/os-release` | [raspberrypi.com/software](https://www.raspberrypi.com/software/) |
+| A user with `sudo` (default `pi` or your own user) | `id` | Created during Pi OS imaging |
+| `git` | `git --version` | `sudo apt update && sudo apt install -y git` |
+| Docker Engine **+ Compose v2 plugin** | `docker --version` and `docker compose version` | See step 1 below |
+| Internet connectivity (IPv4) | `ping -4 -c 1 registry-1.docker.io` | fix router/DNS if this fails |
+| Binance.US account with **trading-enabled API key + secret** | [binance.us API management](https://www.binance.us/en/usercenter/settings/api-management) | Create key with *Enable Reading* + *Enable Spot & Margin Trading*, disable *Enable Withdrawals*, IP-whitelist your Pi |
+
+**Do not use your Binance.US login password anywhere in this project. The bot
+only needs the API key/secret.**
+
+### 1. Install Docker on Raspberry Pi OS
+
+The canonical script from Docker works on all Pi models running 64-bit OS:
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"        # let your user run docker without sudo
+sudo apt install -y docker-compose-plugin  # installs `docker compose` v2
+```
+
+**Log out and log back in** (or `newgrp docker`) so the group change takes
+effect. Then verify:
+
+```bash
+docker --version                       # Docker version 2x.x.x
+docker compose version                 # Docker Compose version v2.x.x
+docker run --rm hello-world            # should print a success message
+```
+
+If `hello-world` fails with an IPv6 error, that's expected on Pi OS Lite —
+continue to step 3 and the fix-ipv6 helper will resolve it before the first
+real build.
+
+### 2. Clone the repository
+
+The bot expects to live at `~/skizoh-crypto-grid-bot` (the `run_bot.sh`,
+`monitor_bot.sh`, and `test_setup.sh` scripts hard-code this path). If you
+clone elsewhere, the Docker workflow still works, but the native Python
+helper scripts won't find themselves.
+
+```bash
+cd ~
+git clone https://github.com/ghempy53/skizoh-crypto-grid-bot.git
+cd skizoh-crypto-grid-bot
+```
+
+### 3. 🍓 Fix IPv6 on Pi OS Lite (one-time, **requires a reboot**)
+
+Pi OS Lite ships with IPv6 enabled but often no working IPv6 route, which
+makes Docker image pulls fail with:
+
+```
+dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
+```
+
+Run the helper — it applies kernel, sysctl, systemd, daemon, and resolver-level
+fixes in one shot, then reboots:
+
+```bash
+./docker-helper.sh fix-ipv6
+sudo reboot                             # REQUIRED — do not skip
+```
+
+> ⚠️  **A reboot is required every time you hit an IPv6 build error**, not just
+> the first time. The fix touches the kernel cmdline, systemd unit environment,
+> and resolv.conf — these only take effect together after a full reboot.
+> Restarting Docker alone is not enough. See the
+> [IPv6 troubleshooting section](#docker-build-fails-with-ipv6-errors) for the
+> 7-step manual breakdown if you want to understand what it's doing.
+
+Skip this step on non-Pi Linux or on Pi networks with working IPv6.
+
+### 4. Create and configure `src/priv/config.json`
+
+This is the **only** place your API credentials live. It is gitignored and
+bind-mounted read-only into the container.
+
+```bash
+cp src/priv/config.json.template src/priv/config.json
+chmod 600 src/priv/config.json          # owner read/write only
+nano src/priv/config.json
+```
+
+Replace the two placeholders with your Binance.US API credentials and save:
+
+```json
+{
+    "api_key":    "paste-your-binance-us-api-key-here",
+    "api_secret": "paste-your-binance-us-api-secret-here",
+    "symbol":     "ETH/USDT"
+}
+```
+
+Leave everything else in the template at its defaults — v3.1's adaptive
+engine tunes the trading parameters live. The top-level keys you may want
+to review before going live: `symbol`, `use_bnb_for_fees`, `fee_rate`,
+`max_position_percent`, `default_scenario`.
+
+### 5. Set file permissions
+
+The project ships with the right permissions, but `git clone` can flatten
+the executable bits depending on your umask and filesystem. Reset them in
+one command:
+
+```bash
+./docker-helper.sh fix-permissions
+```
+
+That sets:
+
+| Path | Mode | Why |
+|---|---|---|
+| `src/priv/config.json` | `600` | Secrets — only your user may read |
+| `docker-helper.sh`, `docker-entrypoint.sh`, `run_bot.sh`, `monitor_bot.sh`, `test_setup.sh` | `+x` (755) | Scripts must be executable |
+| `data/` | `755` | Bot writes logs, tax CSVs, position state here |
+| `src/priv/config.json.template` | `644` | Template stays world-readable |
+
+If `./docker-helper.sh` itself is not yet executable (so `fix-permissions`
+can't run), bootstrap it by hand:
+
+```bash
+chmod +x docker-helper.sh
+./docker-helper.sh fix-permissions
+```
+
+Also verify the `data/` directory is owned by UID **1000** (the container's
+`gridbot` user). On a default Pi install the first user `pi` / `hondarhonda`
+is already UID 1000, so this is automatic. To confirm:
+
+```bash
+id -u                                   # should print 1000
+mkdir -p data && ls -ld data            # owner should match your user
+```
+
+If your host user is not UID 1000, either create a UID-1000 user and `chown`
+the tree to it, or change the container user by editing the `useradd` line
+in `Dockerfile` before building.
+
+### 6. Tune Docker resource limits for your Pi model (optional)
+
+The bot targets 180 MB RAM at rest, but the default limits in
+`docker-compose.yml` are sized for a Pi 4 (2 GB). Edit the `deploy.resources`
+block to match your hardware:
+
+| Pi Model | `memory` | `cpus` |
+|---|---|---|
+| Pi 3 (1 GB) | `256M` | `0.5` |
+| Pi 4 (2 GB) | `384M` *(default)* | `0.75` |
+| Pi 4 (4 GB+) | `512M` | `1.0` |
+| Pi 5 | `768M` | `1.5` |
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '0.75'
+      memory: 384M
+```
+
+### 7. Test the API connection before going live
+
+Pull the image once and run the API smoke test without starting the bot:
+
+```bash
+./docker-helper.sh build                 # first build, ~5-10 min on Pi 4
+docker compose run --rm gridbot test-api
+```
+
+A successful run prints your account balances and confirms Binance.US sees
+your key. If it fails:
+
+- **`Invalid API-key`** → you pasted the wrong key or the key is disabled.
+- **`IP not whitelisted`** → add your Pi's public IP to the key's whitelist
+  on Binance.US, or temporarily remove the whitelist while testing.
+- **IPv6 error** → re-run step 3, then `sudo reboot`.
+
+### 8. Start the bot and verify
+
+```bash
+./docker-helper.sh start
+./docker-helper.sh logs                  # live logs, Ctrl+C to detach
+```
+
+You should see the startup banner, "Config validated", scenario selection,
+and within a minute or two, your first grid being placed. If the container
+exits immediately, `./docker-helper.sh diagnose` will point at the cause.
+
+### 9. Daily operation
+
+Routine commands you'll actually use:
+
+```bash
+./docker-helper.sh logs                  # follow live logs
+./docker-helper.sh logs-tail 200         # last 200 lines
+./docker-helper.sh status                # container + resources
+./docker-helper.sh stop / start / restart
+./docker-helper.sh backup                # snapshot config + data/
+./docker-helper.sh update                # git pull + rebuild + start
+python3 portfolio.py                     # portfolio dashboard (host-side)
+```
+
+### Native (non-Docker) setup — advanced
+
+Only use this if you specifically want to run the bot in a venv on the host
+(e.g. for development). Docker is the supported production path.
+
+```bash
+cd ~/skizoh-crypto-grid-bot
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+cp src/priv/config.json.template src/priv/config.json
+chmod 600 src/priv/config.json
+nano src/priv/config.json                # paste API keys
+
+chmod +x run_bot.sh monitor_bot.sh test_setup.sh
+./test_setup.sh --all                    # full environment check
+./run_bot.sh                             # start the bot
+```
+
+---
+
 ## What's New in v3.1 — Profit Optimization
 
 v3.1 is a comprehensive profitability tuning pass across the entire trading engine. Every parameter was reviewed against a month of live performance data and adjusted to extract more profit per cycle, compound gains faster, and keep capital deployed more efficiently — all while preserving the safety guardrails from v3.0.
@@ -150,90 +399,6 @@ skizoh-crypto-grid-bot/
     ├── tax_transactions.csv   # Tax records
     ├── position_state.json    # Position tracking
     └── position_state_archive.csv  # Historical positions
-```
-
----
-
-## Quick Start
-
-### 1. Clone & Setup Environment
-
-```bash
-cd ~
-git clone <your-repo-url> skizoh-crypto-grid-bot
-cd skizoh-crypto-grid-bot
-
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Configure API Keys
-
-```bash
-cp src/priv/config.json.template src/priv/config.json
-chmod 600 src/priv/config.json
-nano src/priv/config.json
-```
-
-Update with your Binance.US API credentials:
-```json
-{
-    "api_key": "YOUR_ACTUAL_API_KEY",
-    "api_secret": "YOUR_ACTUAL_API_SECRET",
-    "symbol": "ETH/USDT"
-}
-```
-
-### 3. Set Permissions & Test
-
-```bash
-chmod +x run_bot.sh monitor_bot.sh test_setup.sh docker-helper.sh
-./test_setup.sh --all
-```
-
-### 4. Run the Bot
-
-```bash
-./run_bot.sh
-```
-
----
-
-## Docker Deployment (Raspberry Pi)
-
-### Quick Start
-
-```bash
-# Build the optimized image
-docker compose build
-
-# Test API connection
-docker compose run --rm gridbot test-api
-
-# Start the bot
-docker compose up -d
-
-# View logs
-docker compose logs -f
-```
-
-### Resource Configuration by Pi Model
-
-| Pi Model | Memory Limit | CPU Limit |
-|----------|-------------|-----------|
-| Pi 3 (1GB) | 256M | 0.5 |
-| Pi 4 (2GB) | 384M | 0.75 |
-| Pi 4 (4GB+) | 512M | 1.0 |
-| Pi 5 | 768M | 1.5 |
-
-Edit `docker-compose.yml` to match your Pi:
-```yaml
-deploy:
-  resources:
-    limits:
-      cpus: '0.75'
-      memory: 384M
 ```
 
 ---
@@ -679,25 +844,29 @@ dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
 failed to copy: httpReadSeeker: failed open: failed to do request
 ```
 
-This is an IPv6 connectivity issue. Docker/BuildKit is trying to reach
-registries over IPv6 but your network (or the Pi's kernel) doesn't route IPv6.
+This is an IPv6 connectivity issue. Docker is trying to reach registries over
+IPv6 but your network (or the Pi's kernel) doesn't route IPv6.
+
+> ⚠️  **A REBOOT IS REQUIRED whenever you hit this error**, even on subsequent
+> occurrences. The fix touches the kernel cmdline, sysctl, systemd unit
+> environments, and the DNS resolver — these only take effect together after a
+> full reboot. Restarting Docker alone is not enough.
 
 **Recommended: use the helper (fixes everything in one step)**
 ```bash
 ./docker-helper.sh fix-ipv6
-sudo reboot        # only needed first time, to apply the cmdline.txt change
+sudo reboot                   # REQUIRED — do not skip, even on re-runs
 ./docker-helper.sh rebuild
 ```
 
 The helper applies all of the following. If you prefer to do it manually, here
-is exactly what it does — **all five pieces are usually required** on a fresh
+is exactly what it does — **all seven pieces are usually required** on a fresh
 Pi OS Lite install, which is why piecemeal fixes tend to fail:
 
 **1. Prefer IPv4 in glibc's name resolver (`/etc/gai.conf`)**
 
-This is the step most guides miss. Without it, Docker BuildKit receives AAAA
-records first from DNS and attempts IPv6 connections that fail, even when
-IPv6 is disabled on your interfaces.
+Without it, the resolver returns AAAA records first and Docker attempts IPv6
+connections that fail, even when IPv6 is disabled on your interfaces.
 ```bash
 echo "precedence ::ffff:0:0/96  100" | sudo tee -a /etc/gai.conf
 ```
@@ -720,7 +889,7 @@ new line is a common mistake — the bootloader will ignore it.
 sudo nano /boot/firmware/cmdline.txt
 # Append to the END of the existing line (preceded by a single space):
 #   ... ipv6.disable=1
-sudo reboot
+sudo reboot                   # kernel changes require a reboot to apply
 ```
 
 **4. Configure the Docker daemon (`/etc/docker/daemon.json`)**
@@ -736,27 +905,59 @@ Then: `sudo systemctl restart docker`
 
 Why `buildkit: false`? BuildKit runs in its own container with a Go-based
 DNS resolver that **ignores `/etc/gai.conf`** and does not fall back cleanly
-from IPv6 to IPv4 when the kernel rejects `AF_INET6` sockets. You will see
-errors like:
-```
-failed to copy: httpReadSeeker: failed open: failed to do request:
-  dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
-```
-even after every other IPv6 setting is correct. The legacy builder (used
-when BuildKit is off) pulls through dockerd directly and handles IPv6-less
-networks correctly.
+from IPv6 to IPv4 when the kernel rejects `AF_INET6` sockets. The legacy
+builder (used when BuildKit is off) pulls through dockerd directly and handles
+IPv6-less networks correctly.
 
-**5. Clear stale buildx state**
+**5. Force dockerd + containerd to use glibc's resolver (systemd drop-ins)**
+
+Even with BuildKit off, dockerd/containerd are Go programs whose default
+`netgo` resolver ignores `/etc/gai.conf`. They return AAAA records first and
+the `httpReadSeeker` blob-fetch path fails with `EAFNOSUPPORT` instead of
+falling back to IPv4. Setting `GODEBUG=netdns=cgo+1` routes DNS through glibc,
+which honours the `gai.conf` priority from step 1.
+```bash
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/10-ipv4-resolver.conf <<'EOF'
+[Service]
+Environment=GODEBUG=netdns=cgo+1
+EOF
+sudo mkdir -p /etc/systemd/system/containerd.service.d
+sudo tee /etc/systemd/system/containerd.service.d/10-ipv4-resolver.conf <<'EOF'
+[Service]
+Environment=GODEBUG=netdns=cgo+1
+EOF
+sudo systemctl daemon-reload
+```
+
+**6. Drop AAAA records entirely (`/etc/resolv.conf` + dhcpcd hook)**
+
+Belt-and-suspenders: tell glibc's stub resolver to skip AAAA lookups, so
+nothing upstream ever sees an IPv6 address for `registry-1.docker.io`. Also
+persist the option via `/etc/resolvconf.conf` and a `dhcpcd` hook so a DHCP
+lease renewal doesn't wipe it.
+```bash
+echo 'options single-request no-aaaa' | sudo tee -a /etc/resolv.conf
+echo 'resolv_conf_options="single-request no-aaaa"' | sudo tee -a /etc/resolvconf.conf
+```
+
+**7. Clear stale buildx state**
 ```bash
 docker buildx prune -af
 ```
 
-**Verification after reboot**
+**Reboot, then verify**
 ```bash
+sudo reboot                                    # REQUIRED — apply all changes
+# --- after reboot ---
 ip -6 addr                                     # no global IPv6 addresses
 docker info | grep -i ipv6                     # IPv6: off / false
 ./docker-helper.sh rebuild                     # build should succeed
 ```
+
+If the rebuild still fails after a reboot, re-run `./docker-helper.sh fix-ipv6`
+— the final step pulls the base image as a live test and will tell you exactly
+which piece didn't apply.
 
 ---
 

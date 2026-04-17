@@ -1380,12 +1380,24 @@ cmd_fix_permissions() {
         chmod 755 "$DATA_DIR" && print_success "Set data/ to 755"
     fi
 
-    # Scripts
-    for script in docker-helper.sh docker-entrypoint.sh run_bot.sh monitor_bot.sh test_setup.sh; do
+    # Scripts + the portfolio CLI (it has a shebang and is meant to be run directly)
+    for script in docker-helper.sh docker-entrypoint.sh run_bot.sh monitor_bot.sh test_setup.sh portfolio.py; do
         if [[ -f "$script" ]]; then
             chmod +x "$script" && print_success "Made $script executable"
         fi
     done
+
+    # Template should be world-readable (not secret), regular mode 644
+    if [[ -f ./src/priv/config.json.template ]]; then
+        chmod 644 ./src/priv/config.json.template && \
+            print_success "Set config.json.template to 644"
+    fi
+
+    # Ensure data dir exists before attempting chmod (fresh clones lack it)
+    if [[ ! -d "$DATA_DIR" ]]; then
+        mkdir -p "$DATA_DIR" && chmod 755 "$DATA_DIR" && \
+            print_success "Created $DATA_DIR (755)"
+    fi
 
     echo ""
     print_success "Permissions fixed!"
