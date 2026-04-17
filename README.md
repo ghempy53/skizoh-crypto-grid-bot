@@ -1,4 +1,4 @@
-# Skizoh Crypto Grid Trading Bot v3.1
+# Skizoh Crypto Grid Trading Bot v3.2
 
 A profit-optimized, Raspberry Pi-friendly cryptocurrency grid trading bot for Binance.US.
 
@@ -123,7 +123,7 @@ Replace the two placeholders with your Binance.US API credentials and save:
 }
 ```
 
-Leave everything else in the template at its defaults — v3.1's adaptive
+Leave everything else in the template at its defaults — v3.2's adaptive
 engine tunes the trading parameters live. The top-level keys you may want
 to review before going live: `symbol`, `use_bnb_for_fees`, `fee_rate`,
 `max_position_percent`, `default_scenario`.
@@ -252,6 +252,24 @@ chmod +x run_bot.sh monitor_bot.sh test_setup.sh
 ```
 
 ---
+
+## What's New in v3.2 — Security Hardening
+
+v3.2 is a security-focused maintenance release. No behavioral changes to the
+trading engine — all v3.1 profit-optimization work is preserved. Highlights:
+
+- **Fatal-error handling no longer leaks tracebacks to stderr.** `main.py` and
+  `grid_bot.py` now route unhandled exceptions through `logger.exception(...)`,
+  which writes through the configured logging pipeline instead of printing raw
+  traceback frames. This keeps exception payloads (which can include exchange
+  responses) out of unmanaged streams.
+- **Docker entrypoint no longer string-interpolates paths into Python.** The
+  config-validation and API-key probes in `docker-entrypoint.sh` now pass the
+  config path via `sys.argv` instead of embedding it in a Python one-liner,
+  eliminating a theoretical shell-to-Python injection vector.
+- **Version unification.** All modules, Docker artifacts, shell scripts, and
+  the config template now report the same version (v3.2). Prior releases
+  mixed v2.0 / v3.1 / v14.1 / v15.0 labels across layers.
 
 ## What's New in v3.1 — Profit Optimization
 
@@ -387,8 +405,8 @@ skizoh-crypto-grid-bot/
 │   ├── grid_bot.py            # Core trading engine + ProfitOptimizer
 │   ├── market_analysis.py     # Technical indicators + OHLCV caching
 │   ├── config_manager.py      # Scenario management & config loading
-│   ├── adaptive_config.py     # Adaptive config engine + regime detection (v3.1)
-│   ├── resilience.py          # Circuit breaker, flash crash, heartbeat (v3.1)
+│   ├── adaptive_config.py     # Adaptive config engine + regime detection (v3.2)
+│   ├── resilience.py          # Circuit breaker, flash crash, heartbeat (v3.2)
 │   ├── tax_summary.py         # Tax report generator (IRS Form 8949)
 │   ├── test_api.py            # API connection test
 │   └── priv/
@@ -437,7 +455,7 @@ skizoh-crypto-grid-bot/
 | `use_bnb_for_fees` | Enable 25% BNB discount | false | true/false |
 | `max_position_percent` | Max portfolio in crypto | 70 | 50–85 |
 | `max_single_order_percent` | Max single order size | 10 | 5–15 |
-| `enable_adaptive_config` | Enable continuous parameter blending (v3.1) | true | true/false |
+| `enable_adaptive_config` | Enable continuous parameter blending (v3.2) | true | true/false |
 | `enable_dynamic_scenarios` | Fallback discrete scenario switching | true | true/false |
 | `cycles_per_scenario_check` | Cycles between market regime evaluations | 5 | 3–10 |
 | `min_scenario_hold_minutes` | Minimum time before switching scenario | 45 | 30–90 |
@@ -446,7 +464,7 @@ skizoh-crypto-grid-bot/
 
 ---
 
-## Adaptive Configuration Engine (v3.1)
+## Adaptive Configuration Engine (v3.2)
 
 The adaptive config engine replaces hard scenario switches with smooth, continuous parameter blending based on real-time market regime detection.
 
@@ -490,7 +508,7 @@ The engine enforces hard bounds on all blended parameters:
 
 ---
 
-## 24/7 Resilience & Uptime (v3.1)
+## 24/7 Resilience & Uptime (v3.2)
 
 ### Circuit Breaker
 
@@ -1045,4 +1063,4 @@ This software is for educational purposes. Cryptocurrency trading involves signi
 
 ---
 
-*Skizoh Crypto Grid Trading Bot v3.1 — Profit-Optimized Smart Adaptive Trading*
+*Skizoh Crypto Grid Trading Bot v3.2 — Profit-Optimized Smart Adaptive Trading*

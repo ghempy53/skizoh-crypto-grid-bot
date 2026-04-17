@@ -33,7 +33,7 @@
 # \Description: Configuration management with multi-scenario support and market analysis
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Configuration Manager v2.0
+# SKIZOH CRYPTO GRID TRADING BOT - Configuration Manager v3.2
 # =============================================================================
 # Enhanced with profit-focused scenario recommendations
 # =============================================================================
@@ -124,7 +124,7 @@ class ConfigManager:
     def select_scenario_interactive(self) -> Dict[str, Any]:
         """Interactive scenario selection."""
         print("\n" + "="*70)
-        print("SKIZOH GRID TRADING BOT v2.0 - SCENARIO SELECTION")
+        print("SKIZOH GRID TRADING BOT v3.2 - SCENARIO SELECTION")
         print("="*70 + "\n")
         
         print("Available Scenarios:\n")

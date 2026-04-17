@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT v3.1 - Entry Point
+# SKIZOH CRYPTO GRID TRADING BOT v3.2 - Entry Point
 # =============================================================================
 
 import logging
@@ -66,10 +66,10 @@ logger = logging.getLogger(__name__)
 def print_banner():
     """Display welcome banner."""
     print("\n" + "="*70)
-    print("       SKIZOH CRYPTO GRID TRADING BOT v3.1")
+    print("       SKIZOH CRYPTO GRID TRADING BOT v3.2")
     print("       Profit-Optimized Smart Adaptive Trading")
     print("="*70)
-    print("\nv3.1 Smart Features:")
+    print("\nv3.2 Smart Features:")
     print("  [Adaptive]   Continuous parameter blending across scenarios")
     print("  [Regime]     Multi-timeframe market regime detection")
     print("  [Resilience] Circuit breakers + auto-reconnect")
@@ -150,9 +150,7 @@ def main():
         logging.info("Stopped by user")
         sys.exit(0)
     except Exception as e:
-        logging.error(f"Fatal error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Fatal error: {e}")
         sys.exit(1)
 
 

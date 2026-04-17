@@ -1,5 +1,5 @@
 # =============================================================================
-# Skizoh Grid Bot v2.0 - Ultra-Optimized Docker Image
+# Skizoh Grid Bot v3.2 - Ultra-Optimized Docker Image
 # =============================================================================
 # TARGET: Raspberry Pi 3/4/5 (ARM64/ARM32)
 # 
@@ -44,7 +44,7 @@ RUN find /opt/venv -name '*.pyo' -delete 2>/dev/null || true
 FROM python:3.11-slim-bookworm AS runtime
 
 LABEL maintainer="Skizoh" \
-      version="2.0" \
+      version="3.2" \
       description="Grid Trading Bot - Pi Optimized"
 
 # Optimization environment
