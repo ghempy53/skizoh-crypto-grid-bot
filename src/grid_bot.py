@@ -1848,15 +1848,26 @@ class SmartGridTradingBot:
     def _reconcile_with_exchange(self):
         """Reconcile local state with exchange state on startup.
 
-        After a crash/restart, the saved position state can diverge from
-        exchange reality (orders filled, partial fills, manual cancels while
-        offline). Fetch open orders from the exchange and clear any locally
-        tracked orders that the exchange no longer reports as open so they
-        don't block fresh grid placement.
+        After a crash/restart, local tracking can diverge from the exchange
+        in both directions:
+
+          1. Local has an order id the exchange no longer reports as open →
+             the order filled or was canceled while we were offline, so we
+             drop the stale local entry.
+          2. The exchange has an order id we don't know about → a prior bot
+             session placed it, then crashed before a clean shutdown. If we
+             don't adopt it, its fills are invisible to ``check_orders`` and
+             it silently ties up balance.
+
+        Adopting orphan exchange orders into ``active_orders`` /
+        ``grid_levels`` keeps fills observable; the next grid recomposition
+        will clean them up normally via ``cancel_all_orders``.
         """
         try:
             open_orders = self.exchange.fetch_open_orders(self.symbol)
             open_ids = {o['id'] for o in open_orders}
+
+            # Direction 1: clear local entries the exchange no longer has
             stale_local = [oid for oid in list(self.active_orders.keys())
                            if oid not in open_ids]
             for oid in stale_local:
@@ -1864,14 +1875,44 @@ class SmartGridTradingBot:
                     del self.active_orders[oid]
                 except KeyError:
                     pass
-            # Drop orphaned grid levels that referenced cleared order ids.
             for level in self.grid_levels:
                 if level.get('order_id') and level['order_id'] not in open_ids:
                     level['order_id'] = None
 
+            # Direction 2: adopt orphan exchange orders into local tracking
+            adopted = 0
+            for order in open_orders:
+                oid = order.get('id')
+                if not oid or oid in self.active_orders:
+                    continue
+                try:
+                    price = float(order.get('price') or 0)
+                    amount = float(order.get('amount') or 0)
+                    side = order.get('side')
+                except (TypeError, ValueError):
+                    continue
+                if price <= 0 or amount <= 0 or side not in ('buy', 'sell'):
+                    continue
+
+                adopted_level = {
+                    'price': price,
+                    'quantity': amount,
+                    'type': side,
+                    'filled': False,
+                    'order_id': oid,
+                }
+                self.grid_levels.append(adopted_level)
+                self.active_orders[oid] = {
+                    'level': adopted_level,
+                    'order': order,
+                    'placed_at': time.time(),
+                }
+                adopted += 1
+
             logger.info(
                 f"[Reconcile] Exchange reports {len(open_orders)} open orders; "
-                f"cleared {len(stale_local)} stale local entries"
+                f"cleared {len(stale_local)} stale local entries, "
+                f"adopted {adopted} orphan exchange orders"
             )
         except Exception as e:
             logger.warning(f"[Reconcile] Startup reconciliation failed (continuing): {e}")
