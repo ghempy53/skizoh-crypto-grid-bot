@@ -976,13 +976,16 @@ cmd_fix_ipv6() {
     echo "This will apply ALL fixes needed to resolve Docker build/pull IPv6 errors"
     echo "on Raspberry Pi OS Lite:"
     echo ""
-    echo "  1. /etc/gai.conf          → prefer IPv4 in glibc name resolution"
-    echo "                               (the fix most scripts miss — BuildKit needs this)"
-    echo "  2. /etc/sysctl.d/         → disable IPv6 on all interfaces (persistent)"
+    echo "  1. /etc/gai.conf             → prefer IPv4 in glibc name resolution"
+    echo "  2. /etc/sysctl.d/            → disable IPv6 on all interfaces (persistent)"
     echo "  3. /boot/firmware/cmdline.txt → ipv6.disable=1 at kernel level"
-    echo "  4. /etc/docker/daemon.json → disable IPv6 + force IPv4 DNS"
-    echo "  5. docker buildx           → remove stale IPv6 builders"
-    echo "  6. Restart Docker and verify"
+    echo "  4. /etc/docker/daemon.json   → disable IPv6 + force IPv4 DNS + legacy builder"
+    echo "  5. systemd drop-ins          → GODEBUG=netdns=cgo+1 for dockerd & containerd"
+    echo "                                  (the fix most guides miss — Go's default resolver"
+    echo "                                   ignores gai.conf, so dockerd pulls still try IPv6)"
+    echo "  6. resolv.conf + dhcpcd hook → 'options no-aaaa' so nothing resolves to IPv6"
+    echo "  7. docker buildx             → remove stale IPv6 builders"
+    echo "  8. Restart Docker/containerd and verify with a real pull"
     echo ""
     print_warning "Requires sudo. A reboot is needed if cmdline.txt is modified."
     echo ""
@@ -999,7 +1002,7 @@ cmd_fix_ipv6() {
     # Step 1: /etc/gai.conf — make glibc prefer IPv4 (critical for BuildKit)
     # ------------------------------------------------------------------------
     echo ""
-    print_step "1/6 Configuring /etc/gai.conf to prefer IPv4..."
+    print_step "1/8 Configuring /etc/gai.conf to prefer IPv4..."
 
     if [[ ! -f /etc/gai.conf ]]; then
         sudo touch /etc/gai.conf
@@ -1022,7 +1025,7 @@ cmd_fix_ipv6() {
     # Step 2: /etc/sysctl.d/99-disable-ipv6.conf (modern Debian drop-in)
     # ------------------------------------------------------------------------
     echo ""
-    print_step "2/6 Writing /etc/sysctl.d/99-disable-ipv6.conf..."
+    print_step "2/8 Writing /etc/sysctl.d/99-disable-ipv6.conf..."
 
     # Clean up the old /etc/sysctl.conf appendage from previous versions of
     # this script so we have a single source of truth.
@@ -1047,7 +1050,7 @@ EOF
     # Step 3: /boot/firmware/cmdline.txt (kernel-level IPv6 disable)
     # ------------------------------------------------------------------------
     echo ""
-    print_step "3/6 Updating kernel cmdline..."
+    print_step "3/8 Updating kernel cmdline..."
 
     local cmdline_file=""
     if [[ -f /boot/firmware/cmdline.txt ]]; then
@@ -1082,7 +1085,7 @@ EOF
     # Step 4: /etc/docker/daemon.json
     # ------------------------------------------------------------------------
     echo ""
-    print_step "4/6 Configuring /etc/docker/daemon.json..."
+    print_step "4/8 Configuring /etc/docker/daemon.json..."
     sudo mkdir -p /etc/docker
 
     # Merge with existing valid JSON when possible (preserves user's other keys)
@@ -1140,10 +1143,117 @@ EOF
     fi
 
     # ------------------------------------------------------------------------
-    # Step 5: Reset buildx builders that may have cached IPv6 state
+    # Step 5: Force cgo resolver for dockerd + containerd via systemd drop-ins
+    # ------------------------------------------------------------------------
+    # Go's default netgo resolver ignores /etc/gai.conf and returns AAAA
+    # records in their natural order, so dockerd/containerd try IPv6 first
+    # when pulling registry blobs. Even with ipv6.disable=1 that surfaces as
+    # `socket: address family not supported by protocol` inside
+    # `httpReadSeeker: failed open`. Forcing GODEBUG=netdns=cgo+1 makes them
+    # route through glibc's getaddrinfo, which honours the gai.conf priority
+    # rule we set in step 1 and returns IPv4 first.
+    echo ""
+    print_step "5/8 Forcing IPv4-first DNS in dockerd and containerd..."
+
+    for unit in docker containerd; do
+        if ! systemctl list-unit-files "${unit}.service" 2>/dev/null | grep -q "${unit}.service"; then
+            print_info "${unit}.service not installed — skipping"
+            continue
+        fi
+        local dropin_dir="/etc/systemd/system/${unit}.service.d"
+        sudo mkdir -p "$dropin_dir"
+        sudo tee "${dropin_dir}/10-ipv4-resolver.conf" > /dev/null << 'EOF'
+# Managed by docker-helper.sh (fix-ipv6)
+# Force Go's cgo resolver so /etc/gai.conf (prefer IPv4) is honoured.
+# Without this, image pulls over the containerd content fetcher try AAAA
+# records first and fail with EAFNOSUPPORT on IPv6-disabled kernels.
+[Service]
+Environment=GODEBUG=netdns=cgo+1
+EOF
+        print_success "${unit}.service drop-in written"
+    done
+
+    sudo systemctl daemon-reload
+    print_success "systemd reloaded"
+
+    # ------------------------------------------------------------------------
+    # Step 6: DNS resolver — drop AAAA entirely (glibc 2.31+, Pi OS Bookworm+)
+    # ------------------------------------------------------------------------
+    # `options no-aaaa` tells glibc's stub resolver to skip AAAA lookups
+    # completely, so nothing upstream ever sees an IPv6 address for
+    # registry-1.docker.io. `single-request` forces sequential A/AAAA queries
+    # (harmless with no-aaaa, useful if no-aaaa is unsupported by an older
+    # glibc). We persist the option via /etc/resolvconf.conf (read by the
+    # openresolv/resolvconf package) AND drop it straight into
+    # /etc/resolv.conf so it applies immediately, even before the next DHCP
+    # lease refresh.
+    echo ""
+    print_step "6/8 Configuring DNS to drop AAAA records..."
+
+    # Persist across dhcpcd/resolvconf rewrites
+    if [[ -f /etc/resolvconf.conf ]] || command -v resolvconf &> /dev/null; then
+        sudo touch /etc/resolvconf.conf
+        if grep -qE '^[[:space:]]*resolv_conf_options=' /etc/resolvconf.conf 2>/dev/null; then
+            # Replace existing line rather than duplicating
+            sudo sed -i -E \
+                's|^[[:space:]]*resolv_conf_options=.*|resolv_conf_options="single-request no-aaaa"  # Grid Bot helper|' \
+                /etc/resolvconf.conf
+        else
+            echo 'resolv_conf_options="single-request no-aaaa"  # Grid Bot helper' | \
+                sudo tee -a /etc/resolvconf.conf > /dev/null
+        fi
+        print_success "/etc/resolvconf.conf persisted"
+
+        if command -v resolvconf &> /dev/null; then
+            sudo resolvconf -u 2>/dev/null || true
+        fi
+    else
+        print_info "resolvconf not installed — persistence handled via dhcpcd hook below"
+    fi
+
+    # dhcpcd (Pi OS Lite default): ship a hook that re-applies the options
+    # after every DHCP lease (dhcpcd rewrites /etc/resolv.conf on renewal).
+    if [[ -d /lib/dhcpcd/dhcpcd-hooks ]] || [[ -d /etc/dhcp/dhcpcd-hooks ]] || command -v dhcpcd &> /dev/null; then
+        local hook_dir="/lib/dhcpcd/dhcpcd-hooks"
+        [[ -d "$hook_dir" ]] || hook_dir="/etc/dhcp/dhcpcd-hooks"
+        [[ -d "$hook_dir" ]] || hook_dir="/lib/dhcpcd/dhcpcd-hooks"
+        sudo mkdir -p "$hook_dir"
+        sudo tee "${hook_dir}/99-no-aaaa" > /dev/null << 'EOF'
+# Managed by docker-helper.sh (fix-ipv6).
+# Re-append IPv4-only resolver options after dhcpcd rewrites resolv.conf.
+if [ -f /etc/resolv.conf ] && ! grep -qE '^options .*no-aaaa' /etc/resolv.conf; then
+    printf 'options single-request no-aaaa\n' >> /etc/resolv.conf
+fi
+EOF
+        sudo chmod 0644 "${hook_dir}/99-no-aaaa"
+        print_success "dhcpcd hook installed at ${hook_dir}/99-no-aaaa"
+    fi
+
+    # Apply immediately to the live /etc/resolv.conf. Handle the common case
+    # where it's a symlink (systemd-resolved stub) by editing the target.
+    local live_resolv=/etc/resolv.conf
+    if [[ -L /etc/resolv.conf ]]; then
+        live_resolv=$(readlink -f /etc/resolv.conf || echo /etc/resolv.conf)
+    fi
+    if [[ -w "$live_resolv" ]] || sudo test -w "$live_resolv"; then
+        if ! sudo grep -qE '^[[:space:]]*options[[:space:]]+.*no-aaaa' "$live_resolv" 2>/dev/null; then
+            # Remove any prior partial 'options' we wrote previously
+            sudo sed -i -E '/^[[:space:]]*options[[:space:]]+.*# Grid Bot helper$/d' "$live_resolv" 2>/dev/null || true
+            echo 'options single-request no-aaaa  # Grid Bot helper' | \
+                sudo tee -a "$live_resolv" > /dev/null
+            print_success "$live_resolv updated with 'options single-request no-aaaa'"
+        else
+            print_info "$live_resolv already contains no-aaaa"
+        fi
+    else
+        print_warning "$live_resolv is not writable (managed by systemd-resolved?) — relying on GODEBUG=cgo+gai.conf"
+    fi
+
+    # ------------------------------------------------------------------------
+    # Step 7: Reset buildx builders that may have cached IPv6 state
     # ------------------------------------------------------------------------
     echo ""
-    print_step "5/6 Resetting Docker buildx builders..."
+    print_step "7/8 Resetting Docker buildx builders..."
 
     if docker buildx version > /dev/null 2>&1; then
         # Remove any leftover custom builders from prior attempts
@@ -1157,17 +1267,19 @@ EOF
     fi
 
     # ------------------------------------------------------------------------
-    # Step 6: Restart Docker and verify
+    # Step 8: Restart services and verify with a real pull
     # ------------------------------------------------------------------------
     echo ""
-    print_step "6/6 Restarting Docker..."
+    print_step "8/8 Restarting Docker + containerd and verifying..."
+    # Restart containerd first so dockerd connects to a freshly-configured peer
+    sudo systemctl restart containerd 2>/dev/null || true
     sudo systemctl restart docker
 
     # Give dockerd a moment to come back up
     local tries=0
     until docker info > /dev/null 2>&1; do
         ((tries++))
-        if [[ $tries -gt 10 ]]; then
+        if [[ $tries -gt 15 ]]; then
             print_error "Docker failed to restart. Check: sudo journalctl -u docker -n 50"
             exit 1
         fi
@@ -1181,6 +1293,33 @@ EOF
         python3 -c 'import json,sys;d=json.load(sys.stdin);print("on" if d.get("IPv6",False) else "off")' 2>/dev/null || echo "unknown")
     echo "  Daemon IPv6: $daemon_ipv6"
 
+    # Verify GODEBUG was applied to the running dockerd
+    if sudo tr '\0' '\n' < /proc/$(pidof dockerd 2>/dev/null | awk '{print $1}')/environ 2>/dev/null | grep -q '^GODEBUG=.*netdns=cgo'; then
+        print_success "dockerd is using cgo resolver (GODEBUG=netdns=cgo+1)"
+    else
+        print_warning "Could not confirm GODEBUG=netdns=cgo+1 on dockerd (may need reboot)"
+    fi
+
+    # Real test: pull the exact base image the Dockerfile needs. This is the
+    # layer that was failing before, so success here means rebuild will work.
+    echo ""
+    print_step "Test: docker pull python:3.11-slim-bookworm"
+    if timeout 180 docker pull python:3.11-slim-bookworm; then
+        print_success "Base image pulled successfully over IPv4"
+    else
+        print_error "Test pull failed."
+        echo ""
+        echo "  Check the output above. If it still shows a [2xxx:...] IPv6"
+        echo "  address, reboot so the kernel cmdline, systemd drop-in and"
+        echo "  resolv.conf changes all take effect together:"
+        echo ""
+        echo "    sudo reboot"
+        echo ""
+        echo "  After reboot, re-run: $0 fix-ipv6"
+        echo ""
+        exit 1
+    fi
+
     # ------------------------------------------------------------------------
     # Summary
     # ------------------------------------------------------------------------
@@ -1189,17 +1328,23 @@ EOF
     print_success "IPv6 fix applied."
     echo ""
     echo "  Changes made:"
-    echo "    • /etc/gai.conf            (prefer IPv4 in DNS)"
-    echo "    • /etc/sysctl.d/99-disable-ipv6.conf"
-    [[ -n "$cmdline_file" ]] && echo "    • $cmdline_file"
-    echo "    • /etc/docker/daemon.json  (ipv6=false, buildkit=false,"
-    echo "                                 backed up as .bak-<timestamp>)"
+    echo "    • /etc/gai.conf                                 (prefer IPv4 in glibc)"
+    echo "    • /etc/sysctl.d/99-disable-ipv6.conf            (runtime IPv6 off)"
+    [[ -n "$cmdline_file" ]] && echo "    • $cmdline_file  (kernel IPv6 off)"
+    echo "    • /etc/docker/daemon.json                       (ipv6=false, buildkit=false)"
+    echo "    • /etc/systemd/system/docker.service.d/         (GODEBUG=cgo+1)"
+    echo "    • /etc/systemd/system/containerd.service.d/     (GODEBUG=cgo+1)"
+    echo "    • /etc/resolv.conf + /etc/resolvconf.conf       (no-aaaa)"
+    echo "    • dhcpcd hook 99-no-aaaa                        (survives DHCP renewal)"
     echo "    • Docker restarted, buildx cache cleared"
     echo ""
-    echo "  Why BuildKit is disabled:"
-    echo "    BuildKit's Go resolver ignores /etc/gai.conf and does not fall"
-    echo "    back from IPv6 → IPv4 when the kernel rejects IPv6 sockets."
-    echo "    The legacy builder handles this correctly."
+    echo "  Why each piece matters:"
+    echo "    • Kernel ipv6.disable=1     — no IPv6 sockets, so IPv6 dials EAFNOSUPPORT"
+    echo "    • gai.conf prefer IPv4      — glibc returns A records first"
+    echo "    • GODEBUG=netdns=cgo+1      — dockerd/containerd actually USE glibc"
+    echo "                                   (Go's default netgo ignores gai.conf)"
+    echo "    • resolv.conf no-aaaa       — belt & suspenders: never resolve AAAA"
+    echo "    • BuildKit off              — legacy builder falls back to IPv4 cleanly"
     echo ""
 
     if [[ $needs_reboot -eq 1 ]]; then
