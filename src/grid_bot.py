@@ -1117,7 +1117,9 @@ class SmartGridTradingBot:
                 )
 
             if self.initial_investment == 0:
-                self.initial_investment = balances['quote'] + (balances['base'] * current_price)
+                # Use total balances (free + locked) to match total_value calculation
+                # and avoid phantom P&L when funds are locked in pre-existing orders.
+                self.initial_investment = balances['quote_total'] + (balances['base_total'] * current_price)
                 self.start_time = datetime.now()
 
             if reposition:
