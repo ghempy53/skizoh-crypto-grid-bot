@@ -949,13 +949,23 @@ cmd_diagnose() {
     echo ""
 }
 
-# Fix IPv6 issues
+# Fix IPv6 issues (comprehensive: gai.conf + sysctl.d + cmdline.txt + daemon.json + buildx)
 cmd_fix_ipv6() {
     print_header
-    print_warning "This will modify Docker daemon settings to disable IPv6."
+    print_section "Comprehensive Docker IPv6 Fix (Pi OS Lite)"
+
+    echo "This will apply ALL fixes needed to resolve Docker build/pull IPv6 errors"
+    echo "on Raspberry Pi OS Lite:"
     echo ""
-    echo "  This fix is common for Raspberry Pi Docker networking issues."
-    echo "  It requires sudo access."
+    echo "  1. /etc/gai.conf          → prefer IPv4 in glibc name resolution"
+    echo "                               (the fix most scripts miss — BuildKit needs this)"
+    echo "  2. /etc/sysctl.d/         → disable IPv6 on all interfaces (persistent)"
+    echo "  3. /boot/firmware/cmdline.txt → ipv6.disable=1 at kernel level"
+    echo "  4. /etc/docker/daemon.json → disable IPv6 + force IPv4 DNS"
+    echo "  5. docker buildx           → remove stale IPv6 builders"
+    echo "  6. Restart Docker and verify"
+    echo ""
+    print_warning "Requires sudo. A reboot is needed if cmdline.txt is modified."
     echo ""
     read -p "Continue? (y/N): " confirm
 
@@ -964,57 +974,212 @@ cmd_fix_ipv6() {
         exit 0
     fi
 
+    local needs_reboot=0
+
+    # ------------------------------------------------------------------------
+    # Step 1: /etc/gai.conf — make glibc prefer IPv4 (critical for BuildKit)
+    # ------------------------------------------------------------------------
     echo ""
-    print_step "Disabling IPv6..."
+    print_step "1/6 Configuring /etc/gai.conf to prefer IPv4..."
 
-    # Check if already configured
-    if grep -q "net.ipv6.conf.all.disable_ipv6 = 1" /etc/sysctl.conf 2>/dev/null; then
-        print_info "IPv6 already disabled in sysctl.conf"
+    if [[ ! -f /etc/gai.conf ]]; then
+        sudo touch /etc/gai.conf
+    fi
+
+    # The 'precedence ::ffff:0:0/96 100' line tells glibc's getaddrinfo to
+    # rank IPv4-mapped addresses above native IPv6, so AAAA lookups don't
+    # get tried first. Docker/BuildKit inherit this behaviour.
+    if grep -qE '^[[:space:]]*precedence[[:space:]]+::ffff:0:0/96[[:space:]]+100' /etc/gai.conf; then
+        print_info "gai.conf already prefers IPv4"
     else
-        sudo tee -a /etc/sysctl.conf > /dev/null << 'EOF'
+        # Remove any commented/duplicate variants of the same line first
+        sudo sed -i -E '/^[[:space:]]*#?[[:space:]]*precedence[[:space:]]+::ffff:0:0\/96/d' /etc/gai.conf
+        echo "precedence ::ffff:0:0/96  100  # prefer IPv4 (Grid Bot helper)" | \
+            sudo tee -a /etc/gai.conf > /dev/null
+        print_success "gai.conf updated — IPv4 now preferred over IPv6"
+    fi
 
-# Disable IPv6 for Docker compatibility (added by Grid Bot helper)
+    # ------------------------------------------------------------------------
+    # Step 2: /etc/sysctl.d/99-disable-ipv6.conf (modern Debian drop-in)
+    # ------------------------------------------------------------------------
+    echo ""
+    print_step "2/6 Writing /etc/sysctl.d/99-disable-ipv6.conf..."
+
+    # Clean up the old /etc/sysctl.conf appendage from previous versions of
+    # this script so we have a single source of truth.
+    if sudo grep -q "Disable IPv6 for Docker compatibility (added by Grid Bot helper)" /etc/sysctl.conf 2>/dev/null; then
+        print_info "Removing legacy sysctl.conf block from previous script version..."
+        sudo sed -i '/# Disable IPv6 for Docker compatibility (added by Grid Bot helper)/,/net.ipv6.conf.lo.disable_ipv6 = 1/d' /etc/sysctl.conf
+    fi
+
+    sudo tee /etc/sysctl.d/99-disable-ipv6.conf > /dev/null << 'EOF'
+# Disable IPv6 for Docker compatibility (managed by docker-helper.sh)
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
-        print_success "Added IPv6 disable settings to sysctl.conf"
+    print_success "sysctl drop-in written"
+
+    # Apply immediately (--system reads all drop-ins, plain -p does not)
+    sudo sysctl --system > /dev/null 2>&1 || true
+    print_success "sysctl applied"
+
+    # ------------------------------------------------------------------------
+    # Step 3: /boot/firmware/cmdline.txt (kernel-level IPv6 disable)
+    # ------------------------------------------------------------------------
+    echo ""
+    print_step "3/6 Updating kernel cmdline..."
+
+    local cmdline_file=""
+    if [[ -f /boot/firmware/cmdline.txt ]]; then
+        cmdline_file=/boot/firmware/cmdline.txt
+    elif [[ -f /boot/cmdline.txt ]]; then
+        cmdline_file=/boot/cmdline.txt
     fi
 
-    sudo sysctl -p 2>/dev/null || true
-    print_success "Applied sysctl settings"
+    if [[ -z "$cmdline_file" ]]; then
+        print_info "No Pi cmdline.txt found — skipping (not running on Raspberry Pi OS?)"
+    elif grep -q "ipv6.disable=1" "$cmdline_file" 2>/dev/null; then
+        print_info "ipv6.disable=1 already present in $cmdline_file"
+    else
+        # cmdline.txt MUST be a single line. Back up, then append on same line.
+        sudo cp "$cmdline_file" "${cmdline_file}.bak-$(date +%Y%m%d%H%M%S)"
 
-    # Configure Docker daemon
-    print_step "Configuring Docker daemon..."
+        # Read line, strip trailing newline/whitespace, append flag, restore newline.
+        # Using a temp file to avoid partial writes on power loss.
+        local tmp
+        tmp=$(mktemp)
+        # shellcheck disable=SC2002
+        sudo cat "$cmdline_file" | tr -d '\n' | sed -E 's/[[:space:]]+$//' > "$tmp"
+        echo " ipv6.disable=1" | sudo tee -a "$tmp" > /dev/null
+        sudo install -m 0755 "$tmp" "$cmdline_file"
+        rm -f "$tmp"
+        print_success "Appended ipv6.disable=1 to $cmdline_file"
+        print_warning "A REBOOT is required for this kernel change to take effect."
+        needs_reboot=1
+    fi
+
+    # ------------------------------------------------------------------------
+    # Step 4: /etc/docker/daemon.json
+    # ------------------------------------------------------------------------
+    echo ""
+    print_step "4/6 Configuring /etc/docker/daemon.json..."
     sudo mkdir -p /etc/docker
 
-    if [[ -f /etc/docker/daemon.json ]]; then
-        print_warning "Docker daemon.json already exists, backing up..."
-        sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.bak
-    fi
-
-    sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
+    # Merge with existing valid JSON when possible (preserves user's other keys)
+    local merge_script
+    merge_script='
+import json, os, sys
+target = "/etc/docker/daemon.json"
+desired = {
+    "ipv6": False,
+    "dns": ["8.8.8.8", "1.1.1.1"],
+    "dns-opts": ["ndots:0", "single-request"]
+}
+existing = {}
+if os.path.exists(target) and os.path.getsize(target) > 0:
+    try:
+        with open(target) as f:
+            existing = json.load(f)
+    except Exception:
+        existing = {}
+# Strip any prior IPv6 keys that cause trouble on newer Docker versions
+for k in ("fixed-cidr-v6", "ip6tables", "experimental"):
+    existing.pop(k, None)
+existing.update(desired)
+print(json.dumps(existing, indent=2))
+'
+    if command -v python3 &> /dev/null; then
+        if [[ -f /etc/docker/daemon.json ]]; then
+            sudo cp /etc/docker/daemon.json "/etc/docker/daemon.json.bak-$(date +%Y%m%d%H%M%S)"
+        fi
+        python3 -c "$merge_script" | sudo tee /etc/docker/daemon.json > /dev/null
+        print_success "daemon.json written (existing keys preserved where safe)"
+    else
+        # Fallback: overwrite (python3 ships with Pi OS Lite, so this is rare)
+        if [[ -f /etc/docker/daemon.json ]]; then
+            sudo cp /etc/docker/daemon.json "/etc/docker/daemon.json.bak-$(date +%Y%m%d%H%M%S)"
+        fi
+        sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
-    "ipv6": false,
-    "ip6tables": false,
-    "dns": ["8.8.8.8", "8.8.4.4"]
+  "ipv6": false,
+  "dns": ["8.8.8.8", "1.1.1.1"],
+  "dns-opts": ["ndots:0", "single-request"]
 }
 EOF
-    print_success "Configured Docker daemon"
-
-    print_step "Restarting Docker..."
-    sudo systemctl restart docker
-
-    sleep 2
-    if docker info > /dev/null 2>&1; then
-        print_success "Docker restarted successfully"
-    else
-        print_error "Docker failed to restart. Check: sudo journalctl -u docker -n 50"
-        exit 1
+        print_success "daemon.json written (python3 unavailable — overwrote)"
     fi
 
+    # ------------------------------------------------------------------------
+    # Step 5: Reset buildx builders that may have cached IPv6 state
+    # ------------------------------------------------------------------------
     echo ""
-    print_success "IPv6 disabled. You may need to rebuild: $0 rebuild"
+    print_step "5/6 Resetting Docker buildx builders..."
+
+    if docker buildx version > /dev/null 2>&1; then
+        # Remove any leftover custom builders from prior attempts
+        docker buildx rm ipv4builder 2>/dev/null || true
+        docker buildx rm gridbot-builder 2>/dev/null || true
+        # Recreate the default builder fresh so it picks up the new daemon config
+        docker buildx prune -af > /dev/null 2>&1 || true
+        print_success "buildx state cleaned"
+    else
+        print_info "buildx not installed — skipping"
+    fi
+
+    # ------------------------------------------------------------------------
+    # Step 6: Restart Docker and verify
+    # ------------------------------------------------------------------------
+    echo ""
+    print_step "6/6 Restarting Docker..."
+    sudo systemctl restart docker
+
+    # Give dockerd a moment to come back up
+    local tries=0
+    until docker info > /dev/null 2>&1; do
+        ((tries++))
+        if [[ $tries -gt 10 ]]; then
+            print_error "Docker failed to restart. Check: sudo journalctl -u docker -n 50"
+            exit 1
+        fi
+        sleep 1
+    done
+    print_success "Docker is back up"
+
+    # Verify daemon picked up ipv6=false
+    local daemon_ipv6
+    daemon_ipv6=$(docker info --format '{{json .}}' 2>/dev/null | \
+        python3 -c 'import json,sys;d=json.load(sys.stdin);print("on" if d.get("IPv6",False) else "off")' 2>/dev/null || echo "unknown")
+    echo "  Daemon IPv6: $daemon_ipv6"
+
+    # ------------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------------
+    echo ""
+    echo "========================================"
+    print_success "IPv6 fix applied."
+    echo ""
+    echo "  Changes made:"
+    echo "    • /etc/gai.conf            (prefer IPv4 in DNS)"
+    echo "    • /etc/sysctl.d/99-disable-ipv6.conf"
+    [[ -n "$cmdline_file" ]] && echo "    • $cmdline_file"
+    echo "    • /etc/docker/daemon.json  (backed up as .bak-<timestamp>)"
+    echo "    • Docker restarted, buildx cache cleared"
+    echo ""
+
+    if [[ $needs_reboot -eq 1 ]]; then
+        print_warning "REBOOT REQUIRED for the kernel cmdline change to take effect:"
+        echo ""
+        echo "    sudo reboot"
+        echo ""
+        echo "  After reboot, verify with:"
+        echo "    ip -6 addr         # should show no global IPv6 addresses"
+        echo "    $0 rebuild         # rebuild the image"
+    else
+        echo "  Next step:"
+        echo "    $0 rebuild         # rebuild the image"
+    fi
+    echo ""
 }
 
 # Fix file permissions

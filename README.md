@@ -679,56 +679,70 @@ dial tcp [2606:4700:...]:443: socket: address family not supported by protocol
 failed to copy: httpReadSeeker: failed open: failed to do request
 ```
 
-This is an IPv6 connectivity issue. Docker is trying to reach registries over IPv6 but your network doesn't support it.
+This is an IPv6 connectivity issue. Docker/BuildKit is trying to reach
+registries over IPv6 but your network (or the Pi's kernel) doesn't route IPv6.
 
-**Solution 1: Force IPv4 (Quick Fix)**
+**Recommended: use the helper (fixes everything in one step)**
 ```bash
-echo "--ipv4" >> ~/.curlrc
-sudo systemctl restart docker
-docker compose build
+./docker-helper.sh fix-ipv6
+sudo reboot        # only needed first time, to apply the cmdline.txt change
+./docker-helper.sh rebuild
 ```
 
-**Solution 2: Configure Docker daemon**
+The helper applies all of the following. If you prefer to do it manually, here
+is exactly what it does — **all five pieces are usually required** on a fresh
+Pi OS Lite install, which is why piecemeal fixes tend to fail:
 
-Edit `/etc/docker/daemon.json`:
+**1. Prefer IPv4 in glibc's name resolver (`/etc/gai.conf`)**
+
+This is the step most guides miss. Without it, Docker BuildKit receives AAAA
+records first from DNS and attempts IPv6 connections that fail, even when
+IPv6 is disabled on your interfaces.
 ```bash
-sudo nano /etc/docker/daemon.json
+echo "precedence ::ffff:0:0/96  100" | sudo tee -a /etc/gai.conf
 ```
 
-Add or update:
-```json
-{
-  "ipv6": false,
-  "ip6tables": false,
-  "dns": ["8.8.8.8", "8.8.4.4"]
-}
-```
-
-Then restart Docker:
+**2. Disable IPv6 via sysctl (drop-in, not `/etc/sysctl.conf`)**
 ```bash
-sudo systemctl restart docker
+sudo tee /etc/sysctl.d/99-disable-ipv6.conf <<'EOF'
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+sudo sysctl --system
 ```
 
-**Solution 3: Disable IPv6 at kernel level (Permanent Fix)**
+**3. Disable IPv6 at the kernel level (`/boot/firmware/cmdline.txt`)**
+
+⚠️  `cmdline.txt` **must remain a single line**. Adding `ipv6.disable=1` on a
+new line is a common mistake — the bootloader will ignore it.
 ```bash
 sudo nano /boot/firmware/cmdline.txt
-# Add to the END of the existing line (same line, space before):
- ipv6.disable=1
-
-# Reboot
+# Append to the END of the existing line (preceded by a single space):
+#   ... ipv6.disable=1
 sudo reboot
 ```
 
-After reboot, verify:
+**4. Configure the Docker daemon (`/etc/docker/daemon.json`)**
+```json
+{
+  "ipv6": false,
+  "dns": ["8.8.8.8", "1.1.1.1"],
+  "dns-opts": ["ndots:0", "single-request"]
+}
+```
+Then: `sudo systemctl restart docker`
+
+**5. Clear stale buildx state**
 ```bash
-cat /proc/sys/net/ipv6/conf/all/disable_ipv6
-# Should return: "No such file or directory" (module not loaded)
+docker buildx prune -af
 ```
 
-**Solution 4: Clean rebuild after applying fix**
+**Verification after reboot**
 ```bash
-make realclean
-docker compose build
+ip -6 addr                                     # no global IPv6 addresses
+docker info | grep -i ipv6                     # IPv6: off / false
+./docker-helper.sh rebuild                     # build should succeed
 ```
 
 ---
