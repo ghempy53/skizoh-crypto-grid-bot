@@ -2,7 +2,9 @@
 # Optimized for Raspberry Pi / ARM64
 
 # Core trading library
-ccxt>=4.0.0,<5.0.0
+# Narrowed from >=4.0 to a tested minor range: 4.x has shipped breaking
+# changes between minor versions (method signatures, symbol handling).
+ccxt>=4.5.0,<4.7.0
 
 # Numerical computing (float32 optimizations)
 numpy>=1.24.0,<2.0.0

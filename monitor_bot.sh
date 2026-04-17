@@ -123,10 +123,12 @@ show_position_status() {
     
     if [ -f "$POSITION_STATE_FILE" ]; then
         if command -v python3 &> /dev/null; then
+            # Pass the path via argv so shell metacharacters in the path
+            # can't break the -c string or inject code.
             python3 -c "
-import json
+import json, sys
 try:
-    with open('$POSITION_STATE_FILE') as f:
+    with open(sys.argv[1]) as f:
         state = json.load(f)
     qty = state.get('total_quantity', 0)
     cost = state.get('total_cost', 0)
@@ -134,7 +136,7 @@ try:
     fees = state.get('total_fees_paid', 0)
     positions = len(state.get('positions', []))
     avg = cost / qty if qty > 0 else 0
-    
+
     print(f'  Total Quantity: {qty:.8f}')
     print(f'  Total Cost: \${cost:.2f}')
     print(f'  Average Cost: \${avg:.2f}')
@@ -143,7 +145,7 @@ try:
     print(f'  Open Positions: {positions}')
 except Exception as e:
     print(f'  Error reading state: {e}')
-" 2>/dev/null || print_warning "Could not parse position state"
+" "$POSITION_STATE_FILE" 2>/dev/null || print_warning "Could not parse position state"
         else
             print_warning "Python3 not available for parsing"
         fi

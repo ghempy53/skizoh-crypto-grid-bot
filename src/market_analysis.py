@@ -83,7 +83,9 @@ class OHLCVCache:
         
         with self._lock:
             if key in self._cache:
-                if time.time() - self._timestamps[key] < self.ttl:
+                # Use monotonic clock so wall-clock adjustments (NTP, DST,
+                # manual changes) don't make cache entries appear fresh/stale.
+                if time.monotonic() - self._timestamps[key] < self.ttl:
                     self._hits += 1
                     return self._cache[key].copy()
                 else:
@@ -105,7 +107,7 @@ class OHLCVCache:
                 self._evict_oldest()
             
             self._cache[key] = np.array(data, dtype=np.float32)
-            self._timestamps[key] = time.time()
+            self._timestamps[key] = time.monotonic()
     
     def _evict_oldest(self):
         """Remove oldest entry."""
@@ -174,14 +176,14 @@ class MarketAnalyzer:
     def _get_cached(self, name: str) -> Optional[Any]:
         """Get cached indicator."""
         if name in self._indicator_cache:
-            if time.time() - self._indicator_ts.get(name, 0) < self._indicator_ttl:
+            if time.monotonic() - self._indicator_ts.get(name, 0) < self._indicator_ttl:
                 return self._indicator_cache[name]
         return None
     
     def _set_cached(self, name: str, value: Any):
         """Cache indicator result."""
         self._indicator_cache[name] = value
-        self._indicator_ts[name] = time.time()
+        self._indicator_ts[name] = time.monotonic()
     
     def calculate_rsi_wilder(self, period: int = 14, timeframe: str = '1h') -> Optional[float]:
         """
@@ -275,11 +277,15 @@ class MarketAnalyzer:
             smooth_plus = wilder_smooth(plus_dm, period)
             smooth_minus = wilder_smooth(minus_dm, period)
             
-            atr_safe = np.where(atr > 0, atr, 1)
-            plus_di = 100 * smooth_plus / atr_safe
-            minus_di = 100 * smooth_minus / atr_safe
-            
-            di_sum = np.where(plus_di + minus_di > 0, plus_di + minus_di, 1)
+            # Use a small epsilon rather than a fallback of 1.0: a zero-ATR
+            # period with `atr_safe = 1.0` inflates DI to ~100x normal, which
+            # produces spurious "strong trend" ADX spikes on perfectly flat
+            # bars. Clip DI to [0, 100] to bound any remaining instability.
+            atr_safe = np.where(atr > 1e-8, atr, 1e-8)
+            plus_di = np.clip(100 * smooth_plus / atr_safe, 0, 100)
+            minus_di = np.clip(100 * smooth_minus / atr_safe, 0, 100)
+
+            di_sum = np.where(plus_di + minus_di > 1e-8, plus_di + minus_di, 1e-8)
             dx = 100 * np.abs(plus_di - minus_di) / di_sum
             
             if len(dx) <= period * 2:
@@ -390,7 +396,12 @@ class MarketAnalyzer:
             
             width = ((upper - lower) / sma) * 100 if sma > 0 else 0
             current = closes[-1]
-            position = (current - lower) / (upper - lower) if (upper - lower) > 0 else 0.5
+            # Raw position can fall outside [0, 1] when price pierces the
+            # bands; clip so downstream consumers that treat it as a ratio
+            # (e.g. `price_position < 0.05` → crash scoring) don't see
+            # unbounded negative or >1 values.
+            raw_position = (current - lower) / (upper - lower) if (upper - lower) > 0 else 0.5
+            position = float(np.clip(raw_position, 0.0, 1.0))
             
             result = {
                 'upper': float(upper),
@@ -970,7 +981,12 @@ class MarketAnalyzer:
                 else:
                     obv[i] = obv[i - 1]
 
-            obv_trend = 'RISING' if obv[-1] > obv[-5] else 'FALLING'
+            if len(obv) >= 5:
+                obv_trend = 'RISING' if obv[-1] > obv[-5] else 'FALLING'
+            elif len(obv) >= 2:
+                obv_trend = 'RISING' if obv[-1] > obv[0] else 'FALLING'
+            else:
+                obv_trend = 'NEUTRAL'
 
             result = {
                 'volume_ratio': round(vol_ratio, 2),

@@ -257,16 +257,17 @@ check_config() {
         fi
     fi
     
-    # Validate JSON
-    if ! python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>/dev/null; then
+    # Validate JSON (pass config path via argv so shell metacharacters in the
+    # path can't break the -c literal or inject code).
+    if ! python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$CONFIG_FILE" 2>/dev/null; then
         print_error "config.json is not valid JSON!"
         echo "  Check for syntax errors (missing commas, quotes, etc.)"
         exit 1
     fi
     print_success "config.json valid"
-    
+
     # Check if API keys are configured
-    API_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('api_key', ''))" 2>/dev/null)
+    API_KEY=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1])).get('api_key', ''))" "$CONFIG_FILE" 2>/dev/null)
     
     if [ "$API_KEY" = "YOUR_BINANCE_US_API_KEY" ] || [ -z "$API_KEY" ]; then
         print_error "API key not configured!"
