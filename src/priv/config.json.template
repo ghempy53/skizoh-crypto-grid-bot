@@ -1,5 +1,5 @@
 {
-    "_comment": "=== SKIZOH GRID BOT v3.1 - PROFIT-OPTIMIZED ADAPTIVE CONFIGURATION ===",
+    "_comment": "=== SKIZOH GRID BOT v3.2 - PROFIT-OPTIMIZED ADAPTIVE CONFIGURATION ===",
 
     "api_key": "YOUR_BINANCE_US_API_KEY",
     "api_secret": "YOUR_BINANCE_US_API_SECRET",
@@ -24,14 +24,14 @@
     "_comment_order": "Max % for single order (prevents concentration risk)",
     "max_single_order_percent": 10,
 
-    "_comment_smart": "=== v3.1 SMART ADAPTIVE CONFIG ===",
+    "_comment_smart": "=== v3.2 SMART ADAPTIVE CONFIG ===",
 
-    "_comment_adaptive": "Enable continuous parameter blending across scenarios (v3.1)",
+    "_comment_adaptive": "Enable continuous parameter blending across scenarios (v3.2)",
     "_comment_adaptive2": "When enabled, parameters are smoothly interpolated based on market regime",
-    "_comment_adaptive3": "When disabled, falls back to v2.0 discrete scenario switching",
+    "_comment_adaptive3": "When disabled, falls back to legacy discrete scenario switching",
     "enable_adaptive_config": true,
 
-    "_comment_dynamic": "=== DYNAMIC SCENARIO ADJUSTMENT (v2.0 fallback) ===",
+    "_comment_dynamic": "=== DYNAMIC SCENARIO ADJUSTMENT (legacy fallback) ===",
     "_comment_enable_dynamic": "Auto-switch scenarios when adaptive config is disabled",
     "enable_dynamic_scenarios": true,
 
@@ -47,7 +47,7 @@
     "_comment_scenarios": "=== TRADING SCENARIOS ===",
     "_comment_profit": "PROFIT TIP: Grid spacing must exceed 2x fees to profit!",
     "_comment_minimum": "With 0.1% fee: minimum profitable spacing = 0.5%",
-    "_comment_blending": "v3.1: Adaptive engine blends parameters from all scenarios based on market fit",
+    "_comment_blending": "v3.2: Adaptive engine blends parameters from all scenarios based on market fit",
 
     "config_data": [
         {

@@ -1,5 +1,5 @@
 # =============================================================================
-# Skizoh Grid Bot v2.0 - Docker Compose Configuration
+# Skizoh Grid Bot v3.2 - Docker Compose Configuration
 # Optimized for Raspberry Pi deployment
 # =============================================================================
 #
@@ -19,7 +19,7 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     
-    image: skizoh-grid-bot:2.0
+    image: skizoh-grid-bot:3.2
     container_name: skizoh-gridbot
     
     restart: unless-stopped

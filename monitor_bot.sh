@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Crypto Grid Trading Bot v14.1 - Monitor Script
+# Skizoh Crypto Grid Trading Bot v3.2 - Monitor Script
 # Quick status check for your running bot
 ##############################################################################
 
@@ -23,7 +23,7 @@ LOG_FILE="$DATA_DIR/grid_bot.log"
 POSITION_STATE_FILE="$DATA_DIR/position_state.json"
 TAX_FILE="$DATA_DIR/tax_transactions.csv"
 
-BOT_VERSION="14.1"
+BOT_VERSION="3.2"
 
 ##############################################################################
 # Functions
@@ -119,7 +119,7 @@ show_log_preview() {
 
 show_position_status() {
     echo ""
-    echo -e "${BOLD}Position State (v14.1):${NC}"
+    echo -e "${BOLD}Position State (v3.2):${NC}"
     
     if [ -f "$POSITION_STATE_FILE" ]; then
         if command -v python3 &> /dev/null; then

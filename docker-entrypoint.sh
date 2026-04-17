@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Skizoh Grid Bot v2.0 - Docker Entrypoint
+# Skizoh Grid Bot v3.2 - Docker Entrypoint
 # Optimized for Raspberry Pi
 # =============================================================================
 
@@ -13,7 +13,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-VERSION="2.0"
+VERSION="3.2"
 
 print_banner() {
     echo ""
@@ -84,7 +84,8 @@ check_config() {
     # Validate JSON syntax with helpful error details
     # NOTE: Use 'if !' pattern so set -e does not silently kill the script
     # before the error message can be displayed.
-    if ! JSON_ERROR=$(python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>&1); then
+    # Path passed via argv to avoid shell-to-Python string injection.
+    if ! JSON_ERROR=$(python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$CONFIG_FILE" 2>&1); then
         echo -e "${RED}✗${NC} Invalid JSON in config: $CONFIG_FILE"
         echo ""
         echo "  Parse error: $JSON_ERROR"
@@ -99,7 +100,8 @@ check_config() {
     fi
 
     # NOTE: Use 'if !' pattern here too for the same set -e reason.
-    if ! API_KEY=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('api_key', ''))" 2>&1); then
+    # Path passed via argv to avoid shell-to-Python string injection.
+    if ! API_KEY=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1])).get('api_key', ''))" "$CONFIG_FILE" 2>&1); then
         echo -e "${RED}✗${NC} Failed to read API key from config: $CONFIG_FILE"
         echo ""
         echo "  Error: $API_KEY"
