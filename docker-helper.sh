@@ -30,8 +30,18 @@ CONFIG_TEMPLATE="./src/priv/config.json.template"
 DATA_DIR="./data"
 BACKUP_DIR="./backups"
 
-# Enable BuildKit for faster builds with better caching
-export DOCKER_BUILDKIT=1
+# BuildKit is deliberately NOT forced on here. On Raspberry Pi OS Lite with
+# IPv6 disabled, BuildKit's internal Go resolver ignores /etc/gai.conf and
+# fails to fall back from AAAA → A when the kernel rejects IPv6 sockets,
+# producing "address family not supported by protocol" errors during pulls.
+# The legacy builder (dockerd's built-in) handles this correctly.
+#
+# Users on networks with working IPv6 can override by running:
+#   DOCKER_BUILDKIT=1 ./docker-helper.sh build
+#
+# fix-ipv6 also sets {"features": {"buildkit": false}} in daemon.json so
+# the daemon default matches.
+export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-0}"
 
 # Ensure we run from the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -336,7 +346,13 @@ cmd_build_verbose() {
     validate_config || print_warning "Continuing anyway..."
     echo ""
 
-    docker compose -f "$COMPOSE_FILE" build --no-cache --progress=plain
+    # --progress=plain is BuildKit-only; only pass it when BuildKit is on.
+    local progress_flag=()
+    if [[ "${DOCKER_BUILDKIT:-0}" == "1" ]]; then
+        progress_flag=(--progress=plain)
+    fi
+
+    docker compose -f "$COMPOSE_FILE" build --no-cache "${progress_flag[@]}"
     local build_status=$?
 
     printf "\n"
@@ -348,6 +364,9 @@ cmd_build_verbose() {
         echo ""
     else
         print_error "Build failed!"
+        echo ""
+        echo "  If the error mentions IPv6 ('address family not supported by"
+        echo "  protocol'), run: $0 fix-ipv6 && sudo reboot"
         exit 1
     fi
 }
@@ -1074,7 +1093,12 @@ target = "/etc/docker/daemon.json"
 desired = {
     "ipv6": False,
     "dns": ["8.8.8.8", "1.1.1.1"],
-    "dns-opts": ["ndots:0", "single-request"]
+    "dns-opts": ["ndots:0", "single-request"],
+    # Force the legacy builder. BuildKit runs in its own container with a Go
+    # resolver that ignores /etc/gai.conf and does not fall back from AAAA
+    # to A when the kernel rejects IPv6 sockets, so it fails with
+    # "address family not supported by protocol" on IPv6-disabled hosts.
+    "features": {"buildkit": False}
 }
 existing = {}
 if os.path.exists(target) and os.path.getsize(target) > 0:
@@ -1086,7 +1110,11 @@ if os.path.exists(target) and os.path.getsize(target) > 0:
 # Strip any prior IPv6 keys that cause trouble on newer Docker versions
 for k in ("fixed-cidr-v6", "ip6tables", "experimental"):
     existing.pop(k, None)
+# Deep-merge features so we do not clobber other feature flags
+features = dict(existing.get("features") or {})
+features.update(desired["features"])
 existing.update(desired)
+existing["features"] = features
 print(json.dumps(existing, indent=2))
 '
     if command -v python3 &> /dev/null; then
@@ -1104,7 +1132,8 @@ print(json.dumps(existing, indent=2))
 {
   "ipv6": false,
   "dns": ["8.8.8.8", "1.1.1.1"],
-  "dns-opts": ["ndots:0", "single-request"]
+  "dns-opts": ["ndots:0", "single-request"],
+  "features": {"buildkit": false}
 }
 EOF
         print_success "daemon.json written (python3 unavailable — overwrote)"
@@ -1163,8 +1192,14 @@ EOF
     echo "    • /etc/gai.conf            (prefer IPv4 in DNS)"
     echo "    • /etc/sysctl.d/99-disable-ipv6.conf"
     [[ -n "$cmdline_file" ]] && echo "    • $cmdline_file"
-    echo "    • /etc/docker/daemon.json  (backed up as .bak-<timestamp>)"
+    echo "    • /etc/docker/daemon.json  (ipv6=false, buildkit=false,"
+    echo "                                 backed up as .bak-<timestamp>)"
     echo "    • Docker restarted, buildx cache cleared"
+    echo ""
+    echo "  Why BuildKit is disabled:"
+    echo "    BuildKit's Go resolver ignores /etc/gai.conf and does not fall"
+    echo "    back from IPv6 → IPv4 when the kernel rejects IPv6 sockets."
+    echo "    The legacy builder handles this correctly."
     echo ""
 
     if [[ $needs_reboot -eq 1 ]]; then
