@@ -1461,9 +1461,20 @@ class SmartGridTradingBot:
                 elif fee_currency == 'BNB':
                     try:
                         bnb_ticker = self.exchange.fetch_ticker('BNB/USDT')
-                        fee = float(fee_info['cost']) * bnb_ticker['last']
-                    except:
-                        fee = float(fee_info['cost']) * 300
+                        bnb_price = float(bnb_ticker['last'])
+                        fee = float(fee_info['cost']) * bnb_price
+                        self._last_bnb_price = bnb_price
+                    except Exception as e:
+                        # Fall back to last cached BNB price; if unavailable,
+                        # estimate from the trade notional at the discounted
+                        # BNB rate. Avoids a stale magic constant under-recording fees.
+                        cached = getattr(self, '_last_bnb_price', None)
+                        if cached:
+                            fee = float(fee_info['cost']) * cached
+                            logger.warning(f"BNB ticker fetch failed ({e}); using cached price ${cached:.2f}")
+                        else:
+                            fee = (amount * price) * self.fee_rate
+                            logger.warning(f"BNB ticker fetch failed ({e}); estimating fee from notional")
                 else:
                     fee = float(fee_info['cost']) * price
         
