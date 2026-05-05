@@ -214,7 +214,10 @@ class MarketAnalyzer:
                 avg_gain = (avg_gain * (period - 1) + gains[i]) / period
                 avg_loss = (avg_loss * (period - 1) + losses[i]) / period
             
-            if avg_loss == 0:
+            if avg_gain == 0 and avg_loss == 0:
+                # Completely flat window: neutral, not oversold.
+                result = 50.0
+            elif avg_loss == 0:
                 result = 100.0
             elif avg_gain == 0:
                 result = 0.0

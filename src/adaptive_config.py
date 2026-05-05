@@ -528,7 +528,7 @@ class AdaptiveConfigEngine:
         elif regime.primary_regime == MarketRegime.MEAN_REVERTING:
             # Mean reversion is the BEST regime for grid trading — maximize cycles
             adjusted['grid_spacing_percent'] *= 0.75  # Much tighter (was 0.85)
-            adjusted['grid_levels'] = min(adjusted.get('grid_levels', 10) * 1.35, 22)  # More levels
+            adjusted['grid_levels'] = min(int(adjusted.get('grid_levels', 10) * 1.35), 22)  # More levels
             adjusted['investment_percent'] = min(
                 adjusted.get('investment_percent', 70) * 1.08, 82  # Deploy more capital
             )
@@ -537,7 +537,7 @@ class AdaptiveConfigEngine:
         elif regime.primary_regime == MarketRegime.RANGING:
             # Ranging is also good for grid trading — tighten slightly
             adjusted['grid_spacing_percent'] *= 0.92
-            adjusted['grid_levels'] = min(adjusted.get('grid_levels', 10) * 1.15, 20)
+            adjusted['grid_levels'] = min(int(adjusted.get('grid_levels', 10) * 1.15), 20)
 
         elif regime.primary_regime in (MarketRegime.TRENDING_UP, MarketRegime.TRENDING_DOWN):
             # Trending: reduce grid density, favor wider spacing
@@ -545,7 +545,7 @@ class AdaptiveConfigEngine:
             if stability > 0.7:
                 # Strong stable trend: significantly adjust
                 adjusted['grid_spacing_percent'] *= 1.4
-                adjusted['grid_levels'] = max(adjusted.get('grid_levels', 8) * 0.7, 3)
+                adjusted['grid_levels'] = max(int(adjusted.get('grid_levels', 8) * 0.7), 3)
             else:
                 adjusted['grid_spacing_percent'] *= 1.15
 
