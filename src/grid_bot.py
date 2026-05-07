@@ -736,10 +736,19 @@ class SmartGridTradingBot:
                 'options': {
                     'adjustForTimeDifference': True,
                     'recvWindow': 60000,
+                    # Skip fetchCurrencies during load_markets — its underlying
+                    # /sapi/v1/capital/config/getall call is signed, heavily
+                    # rate-limited, and a frequent source of multi-minute
+                    # reconnect failures on binance.us.
+                    'fetchCurrencies': False,
                 }
             })
-            self.exchange.load_markets()
-            # Verify connection with a lightweight call
+            # Markets were already loaded at startup; only reload if the
+            # symbol is missing on this fresh client. Avoids re-pulling
+            # the full market list on every reconnect.
+            if self.symbol not in (self.exchange.markets or {}):
+                self.exchange.load_markets()
+            # Lightweight public liveness probe — no signature, no sapi.
             self.exchange.fetch_ticker(self.symbol)
             return True
 
