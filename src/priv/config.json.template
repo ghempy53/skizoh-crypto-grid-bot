@@ -7,12 +7,64 @@
     "_comment_symbol": "Trading pair - ETH/USDT recommended for liquidity",
     "symbol": "ETH/USDT",
 
-    "_comment_fees": "=== FEE OPTIMIZATION ===",
-    "_comment_fee_rate": "Your actual fee rate. Check Binance.US VIP level.",
+    "_comment_fees": "=== FEE OPTIMIZATION (v3.3) ===",
+    "_comment_fee_rate": "Binance.US spot: 0% maker / 0.02% taker (2026). Grid limit orders pay maker; rebalance market orders pay taker. Verified at startup via fetch_trading_fees.",
+    "maker_fee_rate": 0.0,
+    "taker_fee_rate": 0.0002,
+    "_comment_legacy_fee": "Legacy fallback if maker/taker not set",
     "fee_rate": 0.001,
+
+    "_comment_floor": "Absolute min grid spacing % (covers spread/slippage now that fees ~0)",
+    "min_spacing_floor_percent": 0.15,
 
     "_comment_bnb": "Enable BNB for 25% fee discount (requires BNB balance)",
     "use_bnb_for_fees": false,
+
+    "_comment_risk33": "=== v3.3 REGIME-AWARE EXPOSURE MANAGEMENT ===",
+    "_comment_risk33b": "Staged bear exit with ETH floor, trailing stop from persisted peak, constant-mix rebalancing",
+    "enable_exposure_management": true,
+    "risk_management": {
+        "_comment_targets": "Target % of portfolio in ETH per market regime",
+        "regime_targets": {
+            "TRENDING_UP": 65,
+            "BREAKOUT": 65,
+            "RANGING": 45,
+            "MEAN_REVERTING": 45,
+            "LOW_VOLATILITY": 45,
+            "HIGH_VOLATILITY": 30,
+            "TRENDING_DOWN": 15,
+            "CRASH": 15
+        },
+        "_comment_floor": "Never sell below this ETH % in bear regime (keeps V-bottom participation)",
+        "bear_exposure_floor_percent": 15,
+        "_comment_hysteresis": "Consecutive confirmations to enter/exit bear mode (whipsaw protection)",
+        "bear_confirm_checks": 3,
+        "bull_reentry_confirm_checks": 4,
+        "min_regime_hold_minutes": 60,
+        "regime_confidence_threshold": 0.55,
+        "_comment_stages": "Exposure moves toward target in steps, not jumps",
+        "stage_step_percent": 15,
+        "stage_interval_minutes": 20,
+        "_comment_trailing": "Drawdown-from-peak exposure caps: [[drawdown %, cap %], ...]",
+        "trailing_stop_percent": 10,
+        "derisk_stages": [[5, 50], [8, 25]],
+        "_comment_catastrophic": "Full exit + halt at this drawdown from peak",
+        "catastrophic_stop_percent": 20,
+        "peak_reset_profit_percent": 3,
+        "_comment_rebalance": "Trade only when exposure drifts this far from target",
+        "rebalance_band_percent": 7,
+        "min_rebalance_notional_usdt": 10
+    },
+
+    "_comment_alerts": "=== v3.3 ALERTS (all optional; leave empty to disable) ===",
+    "_comment_alerts2": "ntfy: pick a unique topic, subscribe in the ntfy app at ntfy.sh/<topic>",
+    "alerts": {
+        "ntfy_topic": "",
+        "webhook_url": "",
+        "telegram_bot_token": "",
+        "telegram_chat_id": "",
+        "min_interval_seconds": 300
+    },
 
     "_comment_docker": "=== DOCKER / NON-INTERACTIVE SETTINGS ===",
     "default_scenario": "Balanced",

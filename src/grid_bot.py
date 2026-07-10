@@ -79,6 +79,9 @@ from resilience import (
     FlashCrashDetector, PortfolioHeatTracker, Heartbeat,
     SessionHealth
 )
+from risk_manager import ExposureController
+import notifier
+from notifier import notify
 
 logger = logging.getLogger(__name__)
 
@@ -327,23 +330,32 @@ class ProfitOptimizer:
     - ETH accumulation bias (buy-back more ETH than sold)
     """
 
-    def __init__(self, fee_rate: float = 0.001):
+    def __init__(self, fee_rate: float = 0.001, min_spacing_floor: float = 0.15):
         self.fee_rate = fee_rate
         self.min_profit_multiplier = 1.8  # Tighter margin above fees = more completable cycles
+        # v3.3: With near-zero maker fees the fee-based minimum collapses to
+        # ~0%, so an absolute floor covers spread + slippage + dust.
+        self.min_spacing_floor = min_spacing_floor
         # ETH accumulation: tighter buy-back spacing means more ETH purchased per cycle
         self.accumulation_rebuy_tightening = 0.22  # Buy back 22% closer than sell spacing (was 15%)
-        
+
+    def min_profitable_spacing(self) -> float:
+        """Minimum spacing that clears round-trip fees with margin, never
+        below the absolute floor."""
+        fee_based = (2 * self.fee_rate * 100) * self.min_profit_multiplier
+        return max(fee_based, self.min_spacing_floor)
+
     def calculate_optimal_spacing(self, base_spacing: float, volatility: float,
                                    adx: float, rsi: float) -> float:
         """
         Calculate optimal grid spacing based on market conditions.
-        
+
         Higher volatility = wider spacing (capture bigger moves)
         Strong trend = wider spacing (avoid getting run over)
         Mean reversion zone = tighter spacing (more cycles)
         """
-        # Base minimum: must exceed 2x fees with buffer
-        min_spacing = (2 * self.fee_rate * 100) * self.min_profit_multiplier
+        # Base minimum: must exceed 2x fees with buffer (or absolute floor)
+        min_spacing = self.min_profitable_spacing()
         
         # Start with base spacing
         optimal = max(base_spacing, min_spacing)
@@ -524,15 +536,36 @@ class SmartGridTradingBot:
         self.api_secret = config['api_secret']
         self.symbol = config['symbol']
 
-        # Fee configuration
-        self.fee_rate = config.get('fee_rate', self.DEFAULT_FEE_RATE)
+        # Fee configuration (v3.3: maker/taker aware)
+        # Binance.US now charges 0% maker / 0.02% taker on spot pairs.
+        # Grid limit orders are maker on both sides, so the round-trip fee
+        # is maker+maker — this is what determines minimum profitable
+        # spacing, NOT the old flat 0.1% assumption.
+        legacy_fee = config.get('fee_rate', self.DEFAULT_FEE_RATE)
+        self.maker_fee_rate = config.get('maker_fee_rate', legacy_fee)
+        self.taker_fee_rate = config.get('taker_fee_rate', legacy_fee)
         self.use_bnb_fees = config.get('use_bnb_for_fees', False)
         if self.use_bnb_fees:
-            self.fee_rate *= 0.75  # 25% discount with BNB
-            logger.info(f"Using BNB for fees: effective rate {self.fee_rate*100:.3f}%")
+            self.maker_fee_rate *= 0.75  # 25% discount with BNB
+            self.taker_fee_rate *= 0.75
+            logger.info("Using BNB for fees: 25% discount applied")
+        # fee_rate remains the grid (maker) rate for backward compatibility
+        self.fee_rate = self.maker_fee_rate
+        # Absolute spacing floor covers spread/slippage when fees approach 0
+        self.min_spacing_floor_percent = config.get('min_spacing_floor_percent', 0.15)
+        logger.info(
+            f"Fees: maker {self.maker_fee_rate*100:.3f}% / "
+            f"taker {self.taker_fee_rate*100:.3f}% | "
+            f"spacing floor {self.min_spacing_floor_percent}%"
+        )
 
         # Initialize profit optimizer
-        self.profit_optimizer = ProfitOptimizer(self.fee_rate)
+        self.profit_optimizer = ProfitOptimizer(
+            self.fee_rate, min_spacing_floor=self.min_spacing_floor_percent
+        )
+
+        # v3.3: Alerts (ntfy/webhook/telegram) — no-op when unconfigured
+        notifier.configure(config.get('alerts'))
 
         # Use provided scenario or prompt for selection
         if scenario is None:
@@ -597,6 +630,18 @@ class SmartGridTradingBot:
         # Exposure limits
         self.max_position_percent = config.get('max_position_percent', 75)
         self.max_single_order_percent = config.get('max_single_order_percent', 10)
+
+        # v3.3: Regime-aware exposure controller (staged bear exit with ETH
+        # floor + trailing stop + constant-mix rebalancing). Its effective
+        # target dynamically caps max_position_percent each cycle.
+        self.config_max_position_percent = self.max_position_percent
+        risk_state_file = str(self.data_dir / 'risk_state.json')
+        self.exposure_controller = ExposureController(
+            config.get('risk_management'), state_file=risk_state_file
+        )
+        self.enable_exposure_management = config.get(
+            'enable_exposure_management', True
+        )
 
         # Tax logging
         self.tax_log_file = str(self.data_dir / 'tax_transactions.csv')
@@ -672,8 +717,11 @@ class SmartGridTradingBot:
     
     def _validate_grid_spacing(self):
         """Ensure grid spacing is profitable after fees."""
-        min_spacing = (2 * self.fee_rate * 100) * self.FEE_SAFETY_FACTOR
-        
+        min_spacing = max(
+            (2 * self.fee_rate * 100) * self.FEE_SAFETY_FACTOR,
+            self.min_spacing_floor_percent,
+        )
+
         if self.grid_spacing_percent < min_spacing:
             old_spacing = self.grid_spacing_percent
             self.grid_spacing_percent = min_spacing
@@ -696,21 +744,27 @@ class SmartGridTradingBot:
             })
             exchange.load_markets()
 
-            # Get actual fee rate
+            # Get actual fee rates (v3.3: keep maker and taker separate —
+            # grid limit orders pay maker, rebalance market orders pay taker)
             try:
                 trading_fees = exchange.fetch_trading_fees()
                 if self.symbol in trading_fees:
-                    base_rate = max(
-                        trading_fees[self.symbol].get('maker', self.fee_rate),
-                        trading_fees[self.symbol].get('taker', self.fee_rate)
+                    maker = trading_fees[self.symbol].get('maker')
+                    taker = trading_fees[self.symbol].get('taker')
+                    discount = 0.75 if self.use_bnb_fees else 1.0
+                    if maker is not None:
+                        self.maker_fee_rate = maker * discount
+                    if taker is not None:
+                        self.taker_fee_rate = taker * discount
+                    self.fee_rate = self.maker_fee_rate
+                    self.profit_optimizer.fee_rate = self.fee_rate
+                    logger.info(
+                        f"Exchange fees: maker {self.maker_fee_rate*100:.3f}% / "
+                        f"taker {self.taker_fee_rate*100:.3f}%"
                     )
-                    if self.use_bnb_fees:
-                        self.fee_rate = base_rate * 0.75
-                    else:
-                        self.fee_rate = base_rate
-                    logger.info(f"Exchange fee rate: {self.fee_rate*100:.3f}%")
             except Exception:
-                logger.info(f"Using default fee rate: {self.fee_rate*100:.3f}%")
+                logger.info(f"Using configured fee rates: maker "
+                            f"{self.maker_fee_rate*100:.3f}%")
 
             logger.info("Exchange connection established (Binance.US)")
             return exchange
@@ -1526,7 +1580,7 @@ class SmartGridTradingBot:
                 # closer to the sell price, acquiring more ETH per cycle.
                 # The tighter spacing still exceeds the fee threshold.
                 tightening = self.profit_optimizer.accumulation_rebuy_tightening
-                min_spacing_pct = (2 * self.fee_rate * 100) * self.FEE_SAFETY_FACTOR
+                min_spacing_pct = self.profit_optimizer.min_profitable_spacing()
                 rebuy_spacing = max(
                     min_spacing_pct,
                     self.grid_spacing_percent * (1 - tightening)
@@ -1649,19 +1703,161 @@ class SmartGridTradingBot:
             logger.error(f"Failed to calculate value: {e}")
             return None
     
+    def manage_exposure(self, current_price: float,
+                        market: Optional[Dict[str, Any]] = None) -> bool:
+        """v3.3: Regime-aware exposure management.
+
+        Runs every cycle BEFORE the trend filter, so the bot de-risks in
+        downtrends instead of pausing while fully invested (the v3.2 bug
+        that turned a trend pause into an unmanaged losing position).
+
+        Returns False when a catastrophic stop was triggered (caller should
+        halt the trading loop).
+        """
+        if not self.enable_exposure_management or current_price <= 0:
+            return True
+
+        try:
+            # 1. Feed the regime observation. Detect directly from market
+            #    data rather than via the adaptive engine — the engine only
+            #    updates after the trend filter, which is paused in exactly
+            #    the downtrends we must react to.
+            regime_name, confidence = None, 0.0
+            regime = self.regime_detector.detect(market)
+            if regime:
+                regime_name = regime.primary_regime
+                confidence = regime.confidence
+            regime_result = self.exposure_controller.update_regime(
+                regime_name, confidence
+            )
+            if 'BEAR_CONFIRMED' in regime_result['events']:
+                notify("Grid Bot: bear regime",
+                       f"Bear regime confirmed ({regime_name}). Staging ETH "
+                       f"exposure down to floor.", key='regime', priority='high')
+            elif 'BEAR_EXITED' in regime_result['events']:
+                notify("Grid Bot: bear regime cleared",
+                       f"Regime now {regime_name}. Staging re-entry.",
+                       key='regime')
+
+            # 2. Feed portfolio value (trailing stop from persisted peak)
+            balances = self.get_balances()
+            if not balances:
+                return True
+            crypto_value = balances['base_total'] * current_price
+            total_value = crypto_value + balances['quote_total']
+            dd_result = self.exposure_controller.update_portfolio_value(total_value)
+
+            if dd_result['halt']:
+                notify("Grid Bot: CATASTROPHIC STOP",
+                       f"Drawdown {dd_result['drawdown']:.1f}% from peak "
+                       f"${self.exposure_controller.peak_value:.2f}. "
+                       f"Selling all ETH and halting.",
+                       key='catastrophic', priority='urgent')
+                self.emergency_stop()
+                return False
+
+            if 'DERISK_STAGE' in dd_result['events']:
+                notify("Grid Bot: de-risking",
+                       f"Drawdown {dd_result['drawdown']:.1f}% — ETH exposure "
+                       f"capped at {dd_result['cap']:.0f}%.",
+                       key='derisk', priority='high')
+
+            # 3. Cap grid buying at the effective target so the grid itself
+            #    can't rebuild exposure the controller just reduced
+            effective_target = self.exposure_controller.get_effective_target()
+            self.max_position_percent = min(
+                self.config_max_position_percent, effective_target
+            )
+
+            # 4. Constant-mix rebalance toward the target
+            rec = self.exposure_controller.recommend_rebalance(
+                crypto_value, balances['quote_total'], current_price
+            )
+            if rec:
+                self._execute_rebalance(rec, current_price, balances)
+
+        except Exception as e:
+            logger.error(f"[Risk] Exposure management error: {e}")
+
+        return True
+
+    def _execute_rebalance(self, rec: Dict[str, Any], current_price: float,
+                           balances: Dict[str, Any]):
+        """Execute a rebalance trade recommended by the exposure controller."""
+        side = rec['side']
+        quantity = rec['quantity']
+        base_currency = self.symbol.split('/')[0]
+
+        # Only trade what is free (not locked in grid orders); if the free
+        # balance is short, cancel stale orders next cycle will retry.
+        if side == 'sell':
+            quantity = min(quantity, balances['base'])
+        else:
+            affordable = balances['quote'] / current_price * 0.998
+            quantity = min(quantity, affordable)
+
+        try:
+            quantity = float(self.exchange.amount_to_precision(self.symbol, quantity))
+        except Exception:
+            return
+        if quantity <= 0 or quantity * current_price < \
+                self.exposure_controller.cfg['min_rebalance_notional_usdt']:
+            return
+
+        try:
+            order = self.exchange.create_order(
+                symbol=self.symbol, type='market', side=side, amount=quantity
+            )
+            fill_price = float(order.get('average') or order.get('price')
+                               or current_price)
+            fee = self._calculate_fee(order, quantity, fill_price)
+
+            if side == 'sell':
+                result = self.position_tracker.close_position(quantity, fill_price, fee)
+                self.log_tax_transaction(
+                    'SELL', base_currency, quantity, fill_price, fee,
+                    order.get('id', 'rebalance'),
+                    cost_basis=result['cost_basis'], realized_pnl=result['pnl'],
+                    notes='Exposure rebalance sell')
+            else:
+                self.position_tracker.add_position(quantity, fill_price, fee)
+                self.log_tax_transaction(
+                    'BUY', base_currency, quantity, fill_price, fee,
+                    order.get('id', 'rebalance'),
+                    cost_basis=quantity * fill_price + fee,
+                    notes='Exposure rebalance buy')
+
+            logger.info(
+                f"[Risk] Rebalance {side.upper()}: {quantity:.6f} @ "
+                f"${fill_price:.2f} (exposure {rec['actual_exposure']:.0f}% → "
+                f"target {rec['target_exposure']:.0f}%)"
+            )
+            notify("Grid Bot: rebalanced",
+                   f"{side.upper()} {quantity:.5f} {base_currency} @ "
+                   f"${fill_price:.2f} — exposure {rec['actual_exposure']:.0f}% "
+                   f"→ {rec['target_exposure']:.0f}%", key='rebalance')
+        except Exception as e:
+            logger.error(f"[Risk] Rebalance {side} failed: {e}")
+
     def check_stop_loss(self, portfolio: Optional[Dict] = None) -> bool:
-        """Check stop loss conditions."""
+        """Backstop stop loss vs. initial investment.
+
+        v3.3: The primary defense is now the ExposureController (trailing
+        stop from persisted peak + staged de-risking), which runs in
+        manage_exposure() every cycle. This scenario-level check remains as
+        a final backstop against total-loss scenarios.
+        """
         if portfolio is None:
             portfolio = self.calculate_current_value()
 
         if portfolio:
             if portfolio['profit_percent'] < -self.stop_loss_percent:
                 logger.critical(f"⚠️ STOP LOSS: {portfolio['profit_percent']:.2f}%")
-                self.emergency_stop()
-                return False
-
-            if self.max_drawdown > self.stop_loss_percent * 1.5:
-                logger.critical(f"⚠️ DRAWDOWN STOP: {self.max_drawdown:.2f}%")
+                notify("Grid Bot: STOP LOSS",
+                       f"Loss vs initial investment "
+                       f"{portfolio['profit_percent']:.2f}% breached "
+                       f"-{self.stop_loss_percent}%. Halting.",
+                       key='stoploss', priority='urgent')
                 self.emergency_stop()
                 return False
 
@@ -1984,6 +2180,9 @@ class SmartGridTradingBot:
     def emergency_stop(self):
         """Emergency stop with cleanup."""
         logger.critical("🛑 EMERGENCY STOP")
+        notify("Grid Bot: EMERGENCY STOP",
+               "Cancelling all orders and selling ETH position.",
+               key='emergency', priority='urgent')
 
         try:
             self.cancel_all_orders()
@@ -2254,12 +2453,21 @@ class SmartGridTradingBot:
                         continue
 
                 # ============================================================
+                # PHASE 2b: Exposure management (v3.3)
+                # Runs BEFORE the trend filter so the bot de-risks during
+                # downtrends instead of pausing while fully invested.
+                # ============================================================
+                if not self.manage_exposure(current_price, market):
+                    break  # catastrophic stop triggered
+
+                # ============================================================
                 # PHASE 3: Trend filter
                 # ============================================================
                 if not self.check_trend_filter():
                     self.session_health.update(
                         self.connection_monitor.get_health_score(), True
                     )
+                    self._write_heartbeat(current_price)
                     time.sleep(self.check_interval)
                     continue
 
@@ -2352,4 +2560,5 @@ class SmartGridTradingBot:
             self._print_final_summary()
         except Exception as e:
             logger.exception(f"[Bot] Fatal error: {e}")
+            notify("Grid Bot: fatal error", f"{e}", key='fatal', priority='urgent')
             self.emergency_stop()

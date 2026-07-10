@@ -35,7 +35,10 @@
 import logging
 import sys
 import os
+import time
 from pathlib import Path
+
+import ccxt
 
 # Setup paths
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -47,6 +50,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from grid_bot import SmartGridTradingBot
 from config_manager import ConfigManager
+import notifier
 
 # Configure logging
 LOG_FILE = DATA_DIR / 'grid_bot.log'
@@ -121,37 +125,87 @@ def get_scenario_from_env(config_manager):
     return scenarios[0]
 
 
-def main():
-    """Main entry point."""
-    try:
-        print_banner()
-        
-        config_path = SCRIPT_DIR / 'priv' / 'config.json'
-        if not config_path.exists():
-            print(f"❌ Config not found: {config_path}")
-            sys.exit(1)
-        
-        config_manager = ConfigManager(str(config_path))
-        config = config_manager.load_config()
-        
-        if is_interactive():
-            print("🖥️  Interactive mode\n")
-            scenario = config_manager.select_scenario_interactive()
-        else:
-            scenario = get_scenario_from_env(config_manager)
-            print(f"🐳 Non-interactive mode")
-            print(f"   Scenario: {scenario['name']}\n")
+# Startup retry policy (v3.3).
+#
+# The v3.2 behavior — exit on any fatal error and let Docker's
+# `restart: unless-stopped` relaunch instantly — caused a 2-month
+# undetected crash loop on an invalid API key (restart every ~23s,
+# hammering the Binance.US API, healthcheck green the whole time).
+#
+# Auth errors are NOT retryable on a short fuse: no amount of retrying
+# fixes a bad key. But they ARE fixable externally (user rotates the key),
+# so instead of exiting we alert once and re-check on a long interval —
+# the bot then recovers automatically when the key is fixed.
+AUTH_RETRY_SECONDS = 15 * 60      # re-check credentials every 15 min
+TRANSIENT_RETRY_BASE = 60         # first retry after 1 min
+TRANSIENT_RETRY_MAX = 30 * 60     # cap backoff at 30 min
 
-        # Initialize and run bot with pre-selected scenario
-        bot = SmartGridTradingBot(str(config_path), scenario=scenario)
-        bot.run()
-        
-    except KeyboardInterrupt:
-        logging.info("Stopped by user")
-        sys.exit(0)
-    except Exception as e:
-        logger.exception(f"Fatal error: {e}")
+
+def main():
+    """Main entry point with fault-classified retry."""
+    print_banner()
+
+    config_path = SCRIPT_DIR / 'priv' / 'config.json'
+    if not config_path.exists():
+        print(f"❌ Config not found: {config_path}")
         sys.exit(1)
+
+    config_manager = ConfigManager(str(config_path))
+    config = config_manager.load_config()
+
+    # Configure alerts as early as possible so startup failures are reported
+    notifier.configure(config.get('alerts'))
+
+    if is_interactive():
+        print("🖥️  Interactive mode\n")
+        scenario = config_manager.select_scenario_interactive()
+    else:
+        scenario = get_scenario_from_env(config_manager)
+        print(f"🐳 Non-interactive mode")
+        print(f"   Scenario: {scenario['name']}\n")
+
+    transient_delay = TRANSIENT_RETRY_BASE
+
+    while True:
+        try:
+            bot = SmartGridTradingBot(str(config_path), scenario=scenario)
+            transient_delay = TRANSIENT_RETRY_BASE  # startup succeeded; reset
+            bot.run()
+            # run() returned: intentional halt (stop loss / emergency stop).
+            # Do NOT restart trading automatically after an intentional halt.
+            logger.critical("Bot halted intentionally — exiting. "
+                            "Restart manually after reviewing.")
+            sys.exit(0)
+
+        except KeyboardInterrupt:
+            logging.info("Stopped by user")
+            sys.exit(0)
+
+        except (ccxt.AuthenticationError, ccxt.PermissionDenied) as e:
+            logger.critical(
+                f"AUTH ERROR (not retryable by waiting): {e}\n"
+                f"Fix the API key in src/priv/config.json "
+                f"(Binance.US → API Management), or check its IP whitelist. "
+                f"Re-checking in {AUTH_RETRY_SECONDS // 60} min."
+            )
+            notifier.notify(
+                "Grid Bot: API key rejected",
+                f"Binance.US rejected the API key ({e}). Trading is DOWN. "
+                f"Fix the key or its IP whitelist; the bot re-checks every "
+                f"{AUTH_RETRY_SECONDS // 60} minutes and will resume "
+                f"automatically.",
+                key='auth', priority='urgent',
+            )
+            time.sleep(AUTH_RETRY_SECONDS)
+
+        except Exception as e:
+            logger.exception(f"Fatal error: {e}")
+            notifier.notify("Grid Bot: crashed",
+                            f"Fatal error: {e}. Retrying in "
+                            f"{transient_delay // 60 or 1} min.",
+                            key='fatal', priority='high')
+            time.sleep(transient_delay)
+            transient_delay = min(transient_delay * 2, TRANSIENT_RETRY_MAX)
 
 
 if __name__ == "__main__":
