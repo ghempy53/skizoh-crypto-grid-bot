@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v3.2
+# SKIZOH CRYPTO GRID TRADING BOT - Market Analysis Module v4.0
 # =============================================================================
 # PROFIT OPTIMIZATIONS:
 # - Volume-weighted momentum indicator
@@ -772,7 +772,7 @@ class MarketAnalyzer:
         self._indicator_ts.clear()
 
     # =========================================================================
-    # VOLUME ANALYSIS (v3.0)
+    # VOLUME ANALYSIS (v4.0)
     # =========================================================================
 
     def calculate_volume_profile(self, lookback: int = 48,
@@ -1009,7 +1009,7 @@ class MarketAnalyzer:
             return None
 
     # =========================================================================
-    # MULTI-TIMEFRAME ANALYSIS (v3.0)
+    # MULTI-TIMEFRAME ANALYSIS (v4.0)
     # =========================================================================
 
     def get_multi_timeframe_trend(self) -> Optional[Dict[str, Any]]:

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Crypto Grid Trading Bot v3.2 - Testing & Validation Script
+# Skizoh Crypto Grid Trading Bot v4.0 - Testing & Validation Script
 # Comprehensive setup verification and API testing
 ##############################################################################
 
@@ -26,7 +26,7 @@ CONFIG_FILE="$PRIV_DIR/config.json"
 CONFIG_TEMPLATE="$PRIV_DIR/config.json.template"
 POSITION_STATE_FILE="$DATA_DIR/position_state.json"
 
-BOT_VERSION="3.2"
+BOT_VERSION="4.0"
 
 ##############################################################################
 # Functions
@@ -361,12 +361,12 @@ run_api_test() {
     return $exit_code
 }
 
-# Test v3.2 specific features
+# Test v4.0 specific features
 test_v3_features() {
-    print_section "v3.2 Feature Verification"
+    print_section "v4.0 Feature Verification"
     
-    # Check for v3.2 specific code
-    print_info "Checking v3.2 components..."
+    # Check for v4.0 specific code
+    print_info "Checking v4.0 components..."
     
     # Position tracker
     if grep -q "class PositionTracker" "$SRC_DIR/grid_bot.py" 2>/dev/null; then
@@ -375,9 +375,9 @@ test_v3_features() {
         print_warning "FIFO Position Tracker: Not found"
     fi
     
-    # v3.2: State persistence
+    # v4.0: State persistence
     if grep -q "_load_state\|_save_state" "$SRC_DIR/grid_bot.py" 2>/dev/null; then
-        print_success "Position State Persistence: Present (v3.2)"
+        print_success "Position State Persistence: Present (v4.0)"
     else
         print_warning "Position State Persistence: Not found"
     fi
@@ -417,9 +417,9 @@ test_v3_features() {
         print_warning "Fee-Aware Spacing: Not found"
     fi
     
-    # v3.2: Config validation
+    # v4.0: Config validation
     if grep -q "_validate_config\|_validate_scenario" "$SRC_DIR/grid_bot.py" 2>/dev/null; then
-        print_success "Config Validation: Present (v3.2)"
+        print_success "Config Validation: Present (v4.0)"
     else
         print_warning "Config Validation: Not found"
     fi
@@ -540,7 +540,7 @@ show_menu() {
     echo "  [3] Validate config.json"
     echo "  [4] Test network connectivity"
     echo "  [5] Run API connection test"
-    echo "  [6] Check v3.2 features"
+    echo "  [6] Check v4.0 features"
     echo "  [7] Show system info"
     echo ""
     echo "  [Q] Quit"
@@ -594,7 +594,7 @@ case "${1:-}" in
     --system|-s)
         show_system_info
         ;;
-    --v3|--v3.2)
+    --v3|--v4.0)
         test_v3_features
         ;;
     --help|-h)
@@ -606,7 +606,7 @@ case "${1:-}" in
         echo "  --config, -c   Validate configuration"
         echo "  --network, -n  Test network connectivity"
         echo "  --system, -s   Show system information"
-        echo "  --v3, --v3.2   Check v3.2-specific features"
+        echo "  --v3, --v4.0   Check v4.0-specific features"
         echo "  --help, -h     Show this help"
         echo ""
         echo "No arguments: Interactive menu"

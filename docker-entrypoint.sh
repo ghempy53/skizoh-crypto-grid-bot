@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Skizoh Grid Bot v3.2 - Docker Entrypoint
+# Skizoh Grid Bot v4.0 - Docker Entrypoint
 # Optimized for Raspberry Pi
 # =============================================================================
 
@@ -13,7 +13,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-VERSION="3.2"
+VERSION="4.0"
 
 print_banner() {
     echo ""

@@ -1,5 +1,5 @@
 {
-    "_comment": "=== SKIZOH GRID BOT v3.2 - PROFIT-OPTIMIZED ADAPTIVE CONFIGURATION ===",
+    "_comment": "=== SKIZOH GRID BOT v4.0 - PROFIT-OPTIMIZED ADAPTIVE CONFIGURATION ===",
 
     "api_key": "YOUR_BINANCE_US_API_KEY",
     "api_secret": "YOUR_BINANCE_US_API_SECRET",
@@ -7,7 +7,7 @@
     "_comment_symbol": "Trading pair - ETH/USDT recommended for liquidity",
     "symbol": "ETH/USDT",
 
-    "_comment_fees": "=== FEE OPTIMIZATION (v3.3) ===",
+    "_comment_fees": "=== FEE OPTIMIZATION (v4.0) ===",
     "_comment_fee_rate": "Binance.US spot: 0% maker / 0.02% taker (2026). Grid limit orders pay maker; rebalance market orders pay taker. Verified at startup via fetch_trading_fees.",
     "maker_fee_rate": 0.0,
     "taker_fee_rate": 0.0002,
@@ -20,7 +20,7 @@
     "_comment_bnb": "Enable BNB for 25% fee discount (requires BNB balance)",
     "use_bnb_for_fees": false,
 
-    "_comment_risk33": "=== v3.3 REGIME-AWARE EXPOSURE MANAGEMENT ===",
+    "_comment_risk33": "=== v4.0 REGIME-AWARE EXPOSURE MANAGEMENT ===",
     "_comment_risk33b": "Staged bear exit with ETH floor, trailing stop from persisted peak, constant-mix rebalancing",
     "enable_exposure_management": true,
     "risk_management": {
@@ -56,7 +56,7 @@
         "min_rebalance_notional_usdt": 10
     },
 
-    "_comment_alerts": "=== v3.3 ALERTS (all optional; leave empty to disable) ===",
+    "_comment_alerts": "=== v4.0 ALERTS (all optional; leave empty to disable) ===",
     "_comment_alerts2": "ntfy: pick a unique topic, subscribe in the ntfy app at ntfy.sh/<topic>",
     "alerts": {
         "ntfy_topic": "",
@@ -76,9 +76,9 @@
     "_comment_order": "Max % for single order (prevents concentration risk)",
     "max_single_order_percent": 10,
 
-    "_comment_smart": "=== v3.2 SMART ADAPTIVE CONFIG ===",
+    "_comment_smart": "=== v4.0 SMART ADAPTIVE CONFIG ===",
 
-    "_comment_adaptive": "Enable continuous parameter blending across scenarios (v3.2)",
+    "_comment_adaptive": "Enable continuous parameter blending across scenarios (v4.0)",
     "_comment_adaptive2": "When enabled, parameters are smoothly interpolated based on market regime",
     "_comment_adaptive3": "When disabled, falls back to legacy discrete scenario switching",
     "enable_adaptive_config": true,
@@ -99,7 +99,7 @@
     "_comment_scenarios": "=== TRADING SCENARIOS ===",
     "_comment_profit": "PROFIT TIP: Grid spacing must exceed 2x fees to profit!",
     "_comment_minimum": "With 0.1% fee: minimum profitable spacing = 0.5%",
-    "_comment_blending": "v3.2: Adaptive engine blends parameters from all scenarios based on market fit",
+    "_comment_blending": "v4.0: Adaptive engine blends parameters from all scenarios based on market fit",
 
     "config_data": [
         {

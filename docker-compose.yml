@@ -1,5 +1,5 @@
 # =============================================================================
-# Skizoh Grid Bot v3.2 - Docker Compose Configuration
+# Skizoh Grid Bot v4.0 - Docker Compose Configuration
 # Optimized for Raspberry Pi deployment
 # =============================================================================
 #
@@ -19,7 +19,7 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     
-    image: skizoh-grid-bot:3.2
+    image: skizoh-grid-bot:4.0
     container_name: skizoh-gridbot
     
     restart: unless-stopped
@@ -75,7 +75,7 @@ services:
     networks:
       - gridbot-net
     
-    # v3.3: Liveness check based on the trading loop's heartbeat sentinel.
+    # v4.0: Liveness check based on the trading loop's heartbeat sentinel.
     # The old check (`import ccxt`) passed even while the bot crash-looped
     # for 2 months on a bad API key — it only proved Python could import
     # libraries. The bot touches /app/data/.alive every cycle (including

@@ -1,5 +1,5 @@
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Resilience Module v3.2
+# SKIZOH CRYPTO GRID TRADING BOT - Resilience Module v4.0
 # =============================================================================
 # 24/7 UPTIME FEATURES:
 # - Circuit breaker pattern for API calls (prevents cascading failures)

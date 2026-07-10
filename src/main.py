@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT v3.2 - Entry Point
+# SKIZOH CRYPTO GRID TRADING BOT v4.0 - Entry Point
 # =============================================================================
 
 import logging
@@ -70,10 +70,10 @@ logger = logging.getLogger(__name__)
 def print_banner():
     """Display welcome banner."""
     print("\n" + "="*70)
-    print("       SKIZOH CRYPTO GRID TRADING BOT v3.2")
+    print("       SKIZOH CRYPTO GRID TRADING BOT v4.0")
     print("       Profit-Optimized Smart Adaptive Trading")
     print("="*70)
-    print("\nv3.2 Smart Features:")
+    print("\nv4.0 Smart Features:")
     print("  [Adaptive]   Continuous parameter blending across scenarios")
     print("  [Regime]     Multi-timeframe market regime detection")
     print("  [Resilience] Circuit breakers + auto-reconnect")
@@ -125,9 +125,9 @@ def get_scenario_from_env(config_manager):
     return scenarios[0]
 
 
-# Startup retry policy (v3.3).
+# Startup retry policy (v4.0).
 #
-# The v3.2 behavior — exit on any fatal error and let Docker's
+# The legacy (pre-v4.0) behavior — exit on any fatal error and let Docker's
 # `restart: unless-stopped` relaunch instantly — caused a 2-month
 # undetected crash loop on an invalid API key (restart every ~23s,
 # hammering the Binance.US API, healthcheck green the whole time).
