@@ -4,7 +4,10 @@
 # Core trading library
 # Narrowed from >=4.0 to a tested minor range: 4.x has shipped breaking
 # changes between minor versions (method signatures, symbol handling).
-ccxt>=4.5.0,<4.7.0
+# Lower bound = version verified in production (July 2026).
+ccxt>=4.5.64,<4.7.0
 
 # Numerical computing (float32 optimizations)
-numpy>=1.24.0,<2.0.0
+# numpy 2.x verified: no removed-API usage, explicit float32 dtypes are
+# NEP 50-safe. 2.5+ requires Python >= 3.12 (see Dockerfile base image).
+numpy>=2.4.0,<3.0.0

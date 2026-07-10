@@ -704,7 +704,7 @@ cmd_clean() {
         echo ""
         print_success "Cleanup complete!"
         echo ""
-        print_info "Note: Base images (python:3.11-slim) preserved."
+        print_info "Note: Base images (python:3.13-slim) preserved."
         echo "  Use 'clean-all' to remove everything."
     else
         echo "Cancelled."
@@ -718,7 +718,7 @@ cmd_clean_all() {
     echo ""
     echo "  What will be removed:"
     echo "    - Container and ALL related containers"
-    echo "    - ${IMAGE_NAME} image AND base images (python:3.11, etc.)"
+    echo "    - ${IMAGE_NAME} image AND base images (python:3.13, etc.)"
     echo "    - ALL dangling and unused images"
     echo "    - ALL Docker volumes (including persistent data)"
     echo "    - ALL build cache and buildx builders"
@@ -1303,8 +1303,8 @@ EOF
     # Real test: pull the exact base image the Dockerfile needs. This is the
     # layer that was failing before, so success here means rebuild will work.
     echo ""
-    print_step "Test: docker pull python:3.11-slim-bookworm"
-    if timeout 180 docker pull python:3.11-slim-bookworm; then
+    print_step "Test: docker pull python:3.13-slim-trixie"
+    if timeout 180 docker pull python:3.13-slim-trixie; then
         print_success "Base image pulled successfully over IPv4"
     else
         print_error "Test pull failed."

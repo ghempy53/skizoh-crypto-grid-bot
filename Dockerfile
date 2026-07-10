@@ -2,19 +2,24 @@
 # Skizoh Grid Bot v4.0 - Ultra-Optimized Docker Image
 # =============================================================================
 # TARGET: Raspberry Pi 3/4/5 (ARM64/ARM32)
-# 
+#
 # OPTIMIZATIONS:
-# - Multi-stage build: ~180MB final image (vs 450MB)
-# - Alpine-based for minimal footprint
+# - Multi-stage build for minimal final image
+# - Debian slim base (glibc: prebuilt manylinux wheels, no source builds)
 # - Pre-compiled wheels for ARM
 # - Non-root user for security
 # - Aggressive cleanup
+#
+# BASE IMAGE (v4.0): python:3.13-slim-trixie
+# - Python 3.13 (3.11 is on the way out: numpy 2.5+ dropped it)
+# - Debian 13 "trixie" = current stable, longer security-patch runway
+#   than bookworm
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.13-slim-trixie AS builder
 
 # Build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -41,7 +46,7 @@ RUN find /opt/venv -name '*.pyo' -delete 2>/dev/null || true
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime (Minimal)
 # -----------------------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.13-slim-trixie AS runtime
 
 LABEL maintainer="Skizoh" \
       version="4.0" \
