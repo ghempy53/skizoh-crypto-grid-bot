@@ -91,6 +91,7 @@ class ExposureController:
         self.peak_value: float = 0.0
         self._derisk_cap: float = 100.0
         self.halt_requested: bool = False
+        self._last_saved_peak: float = 0.0
 
         self._load_state()
 
@@ -106,6 +107,7 @@ class ExposureController:
             with open(self.state_file) as f:
                 s = json.load(f)
             self.peak_value = float(s.get('peak_value', 0.0))
+            self._last_saved_peak = self.peak_value
             self._in_bear_mode = bool(s.get('in_bear_mode', False))
             self.target_exposure = float(s.get('target_exposure', self.target_exposure))
             self._derisk_cap = float(s.get('derisk_cap', 100.0))
@@ -230,6 +232,13 @@ class ExposureController:
                 events.append('DERISK_RESET')
                 logger.info("[Risk] New equity high — de-risk stages reset")
             self.peak_value = total_value
+            # Persist quietly-climbing peaks too (throttled to >=0.5% growth
+            # so we don't rewrite the file every cycle). Without this, a
+            # crash during an uneventful climb restarts the trailing stop
+            # from a lower anchor.
+            if self.peak_value >= self._last_saved_peak * 1.005:
+                self._last_saved_peak = self.peak_value
+                self._save_state()
 
         drawdown = 0.0
         if self.peak_value > 0:

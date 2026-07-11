@@ -176,6 +176,19 @@ class TestPersistence(unittest.TestCase):
             r = c2.update_portfolio_value(238.0)
             self.assertLessEqual(r['cap'], 50.0)
 
+    def test_quiet_climb_persists_peak(self):
+        """Peaks reached without any de-risk/regime events must still be
+        persisted (throttled to 0.5% growth), or a crash during a calm
+        climb restarts the trailing stop from a lower anchor."""
+        with tempfile.TemporaryDirectory() as d:
+            state = str(Path(d) / 'risk_state.json')
+            c1 = ExposureController(fast_config(), state_file=state)
+            c1.update_portfolio_value(229.79)  # no events fire here
+            c1.update_portfolio_value(235.00)  # +2.3%, still no events
+            self.assertTrue(Path(state).exists())
+            c2 = ExposureController(fast_config(), state_file=state)
+            self.assertGreaterEqual(c2.peak_value, 235.00 * 0.995)
+
     def test_corrupt_state_is_tolerated(self):
         with tempfile.TemporaryDirectory() as d:
             state = Path(d) / 'risk_state.json'
