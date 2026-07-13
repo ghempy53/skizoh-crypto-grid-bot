@@ -17,6 +17,9 @@
     "_comment_floor": "Absolute min grid spacing % (covers spread/slippage now that fees ~0)",
     "min_spacing_floor_percent": 0.15,
 
+    "_comment_maxdist": "Max % distance from price for grid levels (deeper levels churn without filling)",
+    "max_grid_distance_percent": 4.0,
+
     "_comment_bnb": "Enable BNB for 25% fee discount (requires BNB balance)",
     "use_bnb_for_fees": false,
 

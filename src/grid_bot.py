@@ -553,6 +553,11 @@ class SmartGridTradingBot:
         self.fee_rate = self.maker_fee_rate
         # Absolute spacing floor covers spread/slippage when fees approach 0
         self.min_spacing_floor_percent = config.get('min_spacing_floor_percent', 0.15)
+        # v4.1: Max distance from current price for grid levels. Orders
+        # beyond this never fill within the stale-order window and churn
+        # (cancel + re-place) forever while locking capital. Observed live:
+        # sells laddered to +10% recycling every 30 min without a single fill.
+        self.max_grid_distance_percent = config.get('max_grid_distance_percent', 4.0)
         logger.info(
             f"Fees: maker {self.maker_fee_rate*100:.3f}% / "
             f"taker {self.taker_fee_rate*100:.3f}% | "
@@ -1178,6 +1183,16 @@ class SmartGridTradingBot:
                 current_price, effective_levels, self.grid_spacing_percent, bias
             )
 
+            # v4.1: Drop levels beyond the fillable band. Deep levels lock
+            # capital and churn through the stale-order recycler without
+            # ever filling; concentrating the same capital into fewer,
+            # nearer levels raises completed-cycle frequency.
+            max_dist = self.max_grid_distance_percent
+            buy_prices = [p for p in buy_prices
+                          if (current_price - p) / current_price * 100 <= max_dist]
+            sell_prices = [p for p in sell_prices
+                           if (p - current_price) / current_price * 100 <= max_dist]
+
             # v4.0: Snap buy levels to high-volume nodes (support zones) if available
             vol_profile = market.get('volume_profile')
             if vol_profile and vol_profile.get('hvn_prices'):
@@ -1436,8 +1451,30 @@ class SmartGridTradingBot:
             logger.error(f"Failed to place orders: {e}")
     
     def check_orders(self):
-        """Check and process filled orders, including partial fills."""
+        """Check and process filled orders, including partial fills.
+
+        v4.1: One fetch_open_orders call determines which tracked orders are
+        still open; only orders that disappeared from the open set need an
+        individual fetch to distinguish fill from cancellation. Replaces
+        N fetch_order calls per cycle with 1 + (closed count) — a large
+        API/rate-limit saving on the Pi.
+        """
+        if not self.active_orders:
+            return
+
+        open_ids = None
+        try:
+            open_orders = self._resilient_api_call(
+                lambda: self.exchange.fetch_open_orders(self.symbol)
+            )
+            if open_orders is not None:
+                open_ids = {o['id'] for o in open_orders}
+        except Exception:
+            open_ids = None  # fall back to per-order polling
+
         for order_id in list(self.active_orders.keys()):
+            if open_ids is not None and order_id in open_ids:
+                continue  # still open — no state change possible
             try:
                 order_info = self.exchange.fetch_order(order_id, self.symbol)
                 status = order_info['status']
@@ -1993,6 +2030,15 @@ class SmartGridTradingBot:
         directly into the target asset.
         """
         if current_price <= 0 or self.initial_investment <= 0:
+            return
+
+        # v4.1: When exposure management is active, the constant-mix
+        # rebalancer already converts USDT profit into ETH whenever exposure
+        # drops below the regime target. Market-buying here on top of that
+        # creates a churn loop: reinvest buys push exposure above target,
+        # the rebalancer sells it back, and every round trip pays
+        # 2x taker fee + spread out of realized profit.
+        if self.enable_exposure_management:
             return
 
         realized = self.position_tracker.realized_pnl
