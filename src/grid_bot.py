@@ -29,7 +29,7 @@
 #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #   ÆÆÆÆ   #  #  #  #  #  #  #  #
 
 #  =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v4.0
+# SKIZOH CRYPTO GRID TRADING BOT - Core Trading Engine v4.1
 # =============================================================================
 # PROFIT OPTIMIZATIONS:
 # - Asymmetric grid placement based on market bias
@@ -39,7 +39,7 @@
 # - Capital efficiency improvements
 # - BNB fee discount support
 #
-# SMART v4.0 FEATURES:
+# SMART v4.1 FEATURES:
 # - Adaptive configuration engine (continuous parameter blending)
 # - Multi-timeframe market regime detection
 # - Circuit breaker pattern for API resilience
@@ -333,7 +333,7 @@ class ProfitOptimizer:
     def __init__(self, fee_rate: float = 0.001, min_spacing_floor: float = 0.15):
         self.fee_rate = fee_rate
         self.min_profit_multiplier = 1.8  # Tighter margin above fees = more completable cycles
-        # v4.0: With near-zero maker fees the fee-based minimum collapses to
+        # v4.1: With near-zero maker fees the fee-based minimum collapses to
         # ~0%, so an absolute floor covers spread + slippage + dust.
         self.min_spacing_floor = min_spacing_floor
         # ETH accumulation: tighter buy-back spacing means more ETH purchased per cycle
@@ -483,7 +483,7 @@ class ProfitOptimizer:
 
 class SmartGridTradingBot:
     """
-    Smart grid trading bot v4.0 with adaptive intelligence and profit optimization.
+    Smart grid trading bot v4.1 with adaptive intelligence and profit optimization.
 
     KEY FEATURES:
     1. Asymmetric grid placement based on market bias
@@ -492,13 +492,13 @@ class SmartGridTradingBot:
     4. Profit zone acceleration
     5. Capital efficiency improvements
     6. Memory-efficient for Raspberry Pi
-    7. Adaptive config engine (v4.0) - continuous parameter blending
-    8. Market regime detection (v4.0) - multi-timeframe analysis
-    9. Circuit breaker resilience (v4.0) - 24/7 uptime
-    10. Flash crash protection (v4.0) - emergency response
-    11. Portfolio heat management (v4.0) - optimized position sizing
-    12. Volume-aware grid placement (v4.0) - VWAP/volume profile
-    13. Profit-optimized parameters (v4.0) - tighter spacing, faster compounding
+    7. Adaptive config engine (v4.1) - continuous parameter blending
+    8. Market regime detection (v4.1) - multi-timeframe analysis
+    9. Circuit breaker resilience (v4.1) - 24/7 uptime
+    10. Flash crash protection (v4.1) - emergency response
+    11. Portfolio heat management (v4.1) - optimized position sizing
+    12. Volume-aware grid placement (v4.1) - VWAP/volume profile
+    13. Profit-optimized parameters (v4.1) - tighter spacing, faster compounding
     """
 
     DEFAULT_FEE_RATE = 0.001  # 0.1%
@@ -512,7 +512,7 @@ class SmartGridTradingBot:
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
     MAX_MEMORY_MB = 300  # Force GC if above this
 
-    # v4.0 resilience settings
+    # v4.1 resilience settings
     MAX_CONSECUTIVE_API_FAILURES = 10
     RECONNECT_DELAY_BASE = 5.0  # seconds
     DEGRADED_MODE_INTERVAL_MULTIPLIER = 3.0  # Slow down checks in degraded mode
@@ -536,7 +536,7 @@ class SmartGridTradingBot:
         self.api_secret = config['api_secret']
         self.symbol = config['symbol']
 
-        # Fee configuration (v4.0: maker/taker aware)
+        # Fee configuration (v4.1: maker/taker aware)
         # Binance.US now charges 0% maker / 0.02% taker on spot pairs.
         # Grid limit orders are maker on both sides, so the round-trip fee
         # is maker+maker — this is what determines minimum profitable
@@ -569,7 +569,7 @@ class SmartGridTradingBot:
             self.fee_rate, min_spacing_floor=self.min_spacing_floor_percent
         )
 
-        # v4.0: Alerts (ntfy/webhook/telegram) — no-op when unconfigured
+        # v4.1: Alerts (ntfy/webhook/telegram) — no-op when unconfigured
         notifier.configure(config.get('alerts'))
 
         # Use provided scenario or prompt for selection
@@ -582,7 +582,7 @@ class SmartGridTradingBot:
         self.market_analyzer = MarketAnalyzer(self.exchange, self.symbol)
 
         # =====================================================================
-        # v4.0: Smart Adaptive Systems
+        # v4.1: Smart Adaptive Systems
         # =====================================================================
 
         # Adaptive configuration engine (replaces discrete scenario switching)
@@ -617,7 +617,7 @@ class SmartGridTradingBot:
         self.session_health = SessionHealth()
 
         # =====================================================================
-        # End v4.0 systems
+        # End v4.1 systems
         # =====================================================================
 
         # Position tracking
@@ -636,7 +636,7 @@ class SmartGridTradingBot:
         self.max_position_percent = config.get('max_position_percent', 75)
         self.max_single_order_percent = config.get('max_single_order_percent', 10)
 
-        # v4.0: Regime-aware exposure controller (staged bear exit with ETH
+        # v4.1: Regime-aware exposure controller (staged bear exit with ETH
         # floor + trailing stop + constant-mix rebalancing). Its effective
         # target dynamically caps max_position_percent each cycle.
         self.config_max_position_percent = self.max_position_percent
@@ -749,7 +749,7 @@ class SmartGridTradingBot:
             })
             exchange.load_markets()
 
-            # Get actual fee rates (v4.0: keep maker and taker separate —
+            # Get actual fee rates (v4.1: keep maker and taker separate —
             # grid limit orders pay maker, rebalance market orders pay taker)
             try:
                 trading_fees = exchange.fetch_trading_fees()
@@ -781,7 +781,7 @@ class SmartGridTradingBot:
         """
         Attempt to reconnect to the exchange after connection loss.
 
-        v4.0: Uses exponential backoff and updates connection monitor.
+        v4.1: Uses exponential backoff and updates connection monitor.
         """
         logger.warning("Attempting exchange reconnection...")
         self.connection_monitor.record_reconnect()
@@ -832,7 +832,7 @@ class SmartGridTradingBot:
         """
         Execute an API call with circuit breaker protection and monitoring.
 
-        v4.0: Wraps all exchange API calls for resilience.
+        v4.1: Wraps all exchange API calls for resilience.
         """
         cb = circuit_breaker or self._cb_market_data
         start = time.time()
@@ -941,7 +941,7 @@ class SmartGridTradingBot:
         multiple callers in the same cycle (main loop, scenario checker) share
         the same data without redundant API calls.
 
-        v4.0: Now includes volume analysis, VWAP, and regime detection.
+        v4.1: Now includes volume analysis, VWAP, and regime detection.
         """
         now = time.time()
         if (not force_refresh
@@ -993,7 +993,7 @@ class SmartGridTradingBot:
                 'low_24h': low_24h,
             }
 
-            # v4.0: Add volume analysis (non-critical, won't block on failure)
+            # v4.1: Add volume analysis (non-critical, won't block on failure)
             try:
                 vwap = self.market_analyzer.calculate_vwap()
                 vol_momentum = self.market_analyzer.calculate_volume_momentum()
@@ -1004,7 +1004,7 @@ class SmartGridTradingBot:
             except Exception:
                 pass
 
-            # v4.0: Flash crash detection
+            # v4.1: Flash crash detection
             crash_status = self.flash_crash_detector.update(current_price)
             result['flash_crash'] = crash_status
 
@@ -1080,7 +1080,7 @@ class SmartGridTradingBot:
         """
         Calculate optimized grid levels.
 
-        v4.0: Uses adaptive config engine for parameters, volume profile
+        v4.1: Uses adaptive config engine for parameters, volume profile
         for grid placement, and portfolio heat for position sizing.
         """
         try:
@@ -1093,7 +1093,7 @@ class SmartGridTradingBot:
             if not balances:
                 return False
 
-            # v4.0: Use adaptive config engine for parameters if enabled
+            # v4.1: Use adaptive config engine for parameters if enabled
             if self.enable_adaptive_config:
                 adaptive_params = self.adaptive_engine.compute_blended_params(market)
                 adapted_spacing = adaptive_params.get('grid_spacing_percent', self.base_grid_spacing)
@@ -1144,7 +1144,7 @@ class SmartGridTradingBot:
             else:
                 effective_levels = adapted_levels
 
-            # v4.0: Portfolio heat-based position sizing
+            # v4.1: Portfolio heat-based position sizing
             heat_multiplier = self.portfolio_heat.get_position_size_multiplier()
             if heat_multiplier < 1.0:
                 effective_levels = max(2, int(effective_levels * heat_multiplier))
@@ -1153,7 +1153,7 @@ class SmartGridTradingBot:
             # Get market bias
             bias = self.market_analyzer.should_adjust_grid_bias()
 
-            # v4.0: VWAP-based bias adjustment
+            # v4.1: VWAP-based bias adjustment
             vwap_data = market.get('vwap')
             if vwap_data:
                 if vwap_data.get('price_above_vwap'):
@@ -1193,7 +1193,7 @@ class SmartGridTradingBot:
             sell_prices = [p for p in sell_prices
                            if (p - current_price) / current_price * 100 <= max_dist]
 
-            # v4.0: Snap buy levels to high-volume nodes (support zones) if available
+            # v4.1: Snap buy levels to high-volume nodes (support zones) if available
             vol_profile = market.get('volume_profile')
             if vol_profile and vol_profile.get('hvn_prices'):
                 buy_prices = self._snap_to_volume_nodes(
@@ -1227,7 +1227,7 @@ class SmartGridTradingBot:
             available_usdt = balances['quote'] * (investment_pct / 100)
             max_single_usdt = self.initial_investment * (self.max_single_order_percent / 100)
 
-            # v4.0: Apply heat-based sizing to order amounts
+            # v4.1: Apply heat-based sizing to order amounts
             available_usdt *= heat_multiplier
 
             # Create buy levels
@@ -1274,7 +1274,7 @@ class SmartGridTradingBot:
                 max_single_crypto = max_single_usdt / current_price
                 crypto_per_sell = min(crypto_available / num_sells, max_single_crypto)
 
-                # v4.0: Apply heat multiplier to sell sizing too
+                # v4.1: Apply heat multiplier to sell sizing too
                 crypto_per_sell *= heat_multiplier
 
                 # Auto-reduce sell count if individual orders would be too small
@@ -1364,16 +1364,16 @@ class SmartGridTradingBot:
         """
         Place optimized grid orders with momentum-based entry timing.
 
-        v4.0: Uses circuit breaker for API resilience. Skips order placement
+        v4.1: Uses circuit breaker for API resilience. Skips order placement
         if flash crash is detected or portfolio heat is too high.
         """
         try:
-            # v4.0: Skip if flash crash detected
+            # v4.1: Skip if flash crash detected
             if self.flash_crash_detector.is_alert_active():
                 logger.warning("[Flash] Skipping order placement — flash crash alert active")
                 return
 
-            # v4.0: Skip if trading circuit breaker is open
+            # v4.1: Skip if trading circuit breaker is open
             if not self._cb_trading.can_execute():
                 logger.warning("[CB] Trading circuit breaker is open — skipping orders")
                 return
@@ -1742,10 +1742,10 @@ class SmartGridTradingBot:
     
     def manage_exposure(self, current_price: float,
                         market: Optional[Dict[str, Any]] = None) -> bool:
-        """v4.0: Regime-aware exposure management.
+        """v4.1: Regime-aware exposure management.
 
         Runs every cycle BEFORE the trend filter, so the bot de-risks in
-        downtrends instead of pausing while fully invested (the legacy pre-v4.0 bug
+        downtrends instead of pausing while fully invested (the legacy v3.x bug
         that turned a trend pause into an unmanaged losing position).
 
         Returns False when a catastrophic stop was triggered (caller should
@@ -1879,7 +1879,7 @@ class SmartGridTradingBot:
     def check_stop_loss(self, portfolio: Optional[Dict] = None) -> bool:
         """Backstop stop loss vs. initial investment.
 
-        v4.0: The primary defense is now the ExposureController (trailing
+        v4.1: The primary defense is now the ExposureController (trailing
         stop from persisted peak + staged de-risking), which runs in
         manage_exposure() every cycle. This scenario-level check remains as
         a final backstop against total-loss scenarios.
@@ -2261,14 +2261,14 @@ class SmartGridTradingBot:
         self._print_final_summary()
     
     def _print_final_summary(self):
-        """Print trading session summary with v4.0 diagnostics."""
+        """Print trading session summary with v4.1 diagnostics."""
         try:
             current_price = self.exchange.fetch_ticker(self.symbol)['last'] or 0
             position = self.position_tracker.get_summary(current_price)
             runtime = datetime.now() - self.start_time if self.start_time else None
 
             logger.info("=" * 60)
-            logger.info("SESSION SUMMARY (v4.0)")
+            logger.info("SESSION SUMMARY (v4.1)")
             logger.info("=" * 60)
             logger.info(f"Strategy: {self.scenario_name}")
             if runtime:
@@ -2286,7 +2286,7 @@ class SmartGridTradingBot:
                     eth_change = eth_now - self.initial_eth_balance
                     logger.info(f"ETH: {eth_now:.6f} ({eth_change:+.6f} since start)")
 
-            # v4.0: Smart system diagnostics
+            # v4.1: Smart system diagnostics
             logger.info("-" * 60)
             logger.info("SMART SYSTEMS DIAGNOSTICS")
             logger.info("-" * 60)
@@ -2373,7 +2373,7 @@ class SmartGridTradingBot:
             pass
 
     def _log_smart_status(self, current_price: float):
-        """Log comprehensive smart bot status (v4.0)."""
+        """Log comprehensive smart bot status (v4.1)."""
         try:
             health = self.session_health.get_status()
             heat = self.portfolio_heat.get_status()
@@ -2403,7 +2403,7 @@ class SmartGridTradingBot:
 
     def run(self):
         """
-        Main trading loop with v4.0 smart systems.
+        Main trading loop with v4.1 smart systems.
 
         Features:
         - Adaptive configuration with continuous parameter blending
@@ -2414,7 +2414,7 @@ class SmartGridTradingBot:
         - Heartbeat for external monitoring
         - Circuit breaker API protection
         """
-        logger.info(f"[Bot] Starting Grid Bot v4.0 - {self.scenario_name}")
+        logger.info(f"[Bot] Starting Grid Bot v4.1 - {self.scenario_name}")
         logger.info(f"[Bot] Base spacing: {self.base_grid_spacing}%, Fee: {self.fee_rate*100:.3f}%")
         logger.info(f"[Bot] Adaptive config: {'ENABLED' if self.enable_adaptive_config else 'DISABLED'}")
 
@@ -2451,7 +2451,7 @@ class SmartGridTradingBot:
                 # ============================================================
                 current_price = 0
                 try:
-                    # v4.0: Check connection health, reconnect if needed
+                    # v4.1: Check connection health, reconnect if needed
                     if not self.connection_monitor.is_connected():
                         logger.warning("[Conn] Connection appears lost, attempting reconnect...")
                         if not self._reconnect_exchange():
@@ -2478,7 +2478,7 @@ class SmartGridTradingBot:
                     continue
 
                 # ============================================================
-                # PHASE 2: Flash crash check (v4.0)
+                # PHASE 2: Flash crash check (v4.1)
                 # ============================================================
                 flash_crash = market.get('flash_crash', {})
                 if flash_crash.get('crash_detected'):
@@ -2499,7 +2499,7 @@ class SmartGridTradingBot:
                         continue
 
                 # ============================================================
-                # PHASE 2b: Exposure management (v4.0)
+                # PHASE 2b: Exposure management (v4.1)
                 # Runs BEFORE the trend filter so the bot de-risks during
                 # downtrends instead of pausing while fully invested.
                 # ============================================================
@@ -2533,7 +2533,7 @@ class SmartGridTradingBot:
                     continue
 
                 # ============================================================
-                # PHASE 4: Update adaptive parameters (v4.0)
+                # PHASE 4: Update adaptive parameters (v4.1)
                 # ============================================================
                 if self.enable_adaptive_config:
                     try:
@@ -2542,11 +2542,11 @@ class SmartGridTradingBot:
                         logger.debug(f"[Adaptive] Parameter update failed: {e}")
 
                 # ============================================================
-                # PHASE 5: Update portfolio heat (v4.0)
+                # PHASE 5: Update portfolio heat (v4.1)
                 # ============================================================
                 self._update_portfolio_heat(current_price)
 
-                # v4.0: If portfolio heat says reduce, be more aggressive about cancelling
+                # v4.1: If portfolio heat says reduce, be more aggressive about cancelling
                 if self.portfolio_heat.should_reduce_exposure():
                     logger.warning(
                         f"[Heat] Portfolio heat critical ({self.portfolio_heat._current_heat:.0f}) — "
@@ -2583,7 +2583,7 @@ class SmartGridTradingBot:
                     self._check_scenario_switch()
 
                 # ============================================================
-                # PHASE 9: Health updates and heartbeat (v4.0)
+                # PHASE 9: Health updates and heartbeat (v4.1)
                 # ============================================================
                 self.session_health.update(
                     self.connection_monitor.get_health_score(),
@@ -2597,7 +2597,7 @@ class SmartGridTradingBot:
                     self._log_smart_status(current_price)
                     last_smart_status = time.time()
 
-                # v4.0: Check if session health warrants emergency stop
+                # v4.1: Check if session health warrants emergency stop
                 if self.session_health.should_emergency_stop():
                     logger.critical("[Health] Too many consecutive errors — emergency stop")
                     self.emergency_stop()

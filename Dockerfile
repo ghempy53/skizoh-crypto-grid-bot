@@ -1,5 +1,5 @@
 # =============================================================================
-# Skizoh Grid Bot v4.0 - Ultra-Optimized Docker Image
+# Skizoh Grid Bot v4.1 - Ultra-Optimized Docker Image
 # =============================================================================
 # TARGET: Raspberry Pi 3/4/5 (ARM64/ARM32)
 #
@@ -10,7 +10,7 @@
 # - Non-root user for security
 # - Aggressive cleanup
 #
-# BASE IMAGE (v4.0): python:3.13-slim-trixie
+# BASE IMAGE (v4.1): python:3.13-slim-trixie
 # - Python 3.13 (3.11 is on the way out: numpy 2.5+ dropped it)
 # - Debian 13 "trixie" = current stable, longer security-patch runway
 #   than bookworm
@@ -49,7 +49,7 @@ RUN find /opt/venv -name '*.pyo' -delete 2>/dev/null || true
 FROM python:3.13-slim-trixie AS runtime
 
 LABEL maintainer="Skizoh" \
-      version="4.0" \
+      version="4.1" \
       description="Grid Trading Bot - Pi Optimized"
 
 # Optimization environment

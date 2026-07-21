@@ -1,5 +1,5 @@
 # =============================================================================
-# Risk Manager (v4.0) - regime-aware exposure control
+# Risk Manager (v4.1) - regime-aware exposure control
 #
 # Unifies three down-market defenses into a single "target ETH exposure":
 #
@@ -97,7 +97,7 @@ class ExposureController:
 
     # ------------------------------------------------------------------
     # Persistence (peak value must survive restarts, or every restart
-    # silently resets the trailing stop - the legacy pre-v4.0 bug)
+    # silently resets the trailing stop - the legacy v3.x bug)
     # ------------------------------------------------------------------
 
     def _load_state(self):

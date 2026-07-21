@@ -207,7 +207,7 @@ if __name__ == "__main__":
     import sys
     
     print("="*70)
-    print("SKIZOH GRID BOT v4.0 - TAX SUMMARY GENERATOR")
+    print("SKIZOH GRID BOT v4.1 - TAX SUMMARY GENERATOR")
     print("="*70)
     
     # Check for year argument

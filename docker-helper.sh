@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Grid Bot v4.0 - Docker Helper Script for Raspberry Pi
+# Skizoh Grid Bot v4.1 - Docker Helper Script for Raspberry Pi
 # Comprehensive Docker management with diagnostics and troubleshooting
 # Usage: ./docker-helper.sh [command] [options]
 ##############################################################################
@@ -19,10 +19,10 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Configuration - must match docker-compose.yml
-SCRIPT_VERSION="4.0.0"
+SCRIPT_VERSION="4.1.0"
 CONTAINER_NAME="skizoh-gridbot"
 IMAGE_NAME="skizoh-grid-bot"
-IMAGE_TAG="4.0"
+IMAGE_TAG="4.1"
 COMPOSE_FILE="docker-compose.yml"
 SERVICE_NAME="gridbot"
 CONFIG_FILE="./src/priv/config.json"
@@ -54,7 +54,7 @@ cd "$SCRIPT_DIR"
 print_header() {
     echo ""
     echo -e "${CYAN}+==============================================================+${NC}"
-    echo -e "${CYAN}|${NC}     ${BOLD}${BLUE}SKIZOH GRID BOT v4.0 - DOCKER HELPER${NC}                    ${CYAN}|${NC}"
+    echo -e "${CYAN}|${NC}     ${BOLD}${BLUE}SKIZOH GRID BOT v4.1 - DOCKER HELPER${NC}                    ${CYAN}|${NC}"
     echo -e "${CYAN}+==============================================================+${NC}"
     echo ""
 }

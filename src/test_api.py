@@ -1,5 +1,5 @@
 # =============================================================================
-# SKIZOH CRYPTO GRID TRADING BOT v4.0 - API Connection Test
+# SKIZOH CRYPTO GRID TRADING BOT v4.1 - API Connection Test
 # =============================================================================
 
 import ccxt
@@ -27,7 +27,7 @@ def test_api_connection():
     """Test connection to Binance.US API."""
     
     print("="*60)
-    print("BINANCE.US API CONNECTION TEST - v4.0")
+    print("BINANCE.US API CONNECTION TEST - v4.1")
     print("="*60)
     print()
     

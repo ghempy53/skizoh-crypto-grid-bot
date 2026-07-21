@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ##############################################################################
-# Skizoh Crypto Grid Trading Bot v4.0 - Startup Script
-# Enhanced with v4.0 feature checks, improved validation, and bug fixes
+# Skizoh Crypto Grid Trading Bot v4.1 - Startup Script
+# Enhanced with v4.1 feature checks, improved validation, and bug fixes
 ##############################################################################
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
@@ -16,7 +16,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Configuration - Updated for v4.0
+# Configuration - Updated for v4.1
 # IMPORTANT: All scripts must use the same BOT_DIR
 BOT_DIR="$HOME/skizoh-crypto-grid-bot"
 SRC_DIR="$BOT_DIR/src"
@@ -30,8 +30,8 @@ LOG_FILE="$DATA_DIR/grid_bot.log"
 TAX_FILE="$DATA_DIR/tax_transactions.csv"
 POSITION_STATE_FILE="$DATA_DIR/position_state.json"
 
-# v4.0 version info
-BOT_VERSION="4.0"
+# v4.1 version info
+BOT_VERSION="4.1"
 BOT_NAME="Skizoh Smart Grid Bot"
 
 ##############################################################################
@@ -75,7 +75,7 @@ check_directory() {
         echo ""
         echo "To set up the bot, run:"
         echo "  mkdir -p $BOT_DIR/{src/priv,data,venv}"
-        echo "  # Then extract v4.0 files to $BOT_DIR"
+        echo "  # Then extract v4.1 files to $BOT_DIR"
         exit 1
     fi
     cd "$BOT_DIR" || exit 1
@@ -223,7 +223,7 @@ check_bot_files() {
     fi
     
     if [ $missing -eq 1 ]; then
-        print_error "Missing required files. Please reinstall v4.0."
+        print_error "Missing required files. Please reinstall v4.1."
         exit 1
     fi
 }
@@ -367,7 +367,7 @@ show_system_info() {
         echo "  Log size: $LOG_SIZE"
     fi
     
-    # v4.0: Position state file
+    # v4.1: Position state file
     if [ -f "$POSITION_STATE_FILE" ]; then
         print_success "Position state file: Present"
     else
@@ -398,10 +398,10 @@ manage_logs() {
     fi
 }
 
-# Show v4.0 features
+# Show v4.1 features
 show_v3_features() {
     echo ""
-    echo -e "${BOLD}v4.0 Features Active:${NC}"
+    echo -e "${BOLD}v4.1 Features Active:${NC}"
     echo "  • FIFO Position Tracking (accurate P&L)"
     echo "  • Position State Persistence (survives restarts)"
     echo "  • ADX Trend Filter (pauses in strong trends)"
@@ -516,7 +516,7 @@ case "${1:-}" in
         echo ""
         echo -e "${BOLD}Ready to start. Confirm settings:${NC}"
         echo "  • Binance.US API"
-        echo "  • Smart Grid Trading v4.0"
+        echo "  • Smart Grid Trading v4.1"
         echo "  • ADX Trend Filter: Active"
         echo "  • FIFO P&L Tracking: Active"
         echo "  • Position State Persistence: Active"

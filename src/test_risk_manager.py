@@ -1,5 +1,5 @@
 # =============================================================================
-# Unit tests for risk_manager.ExposureController (v4.0)
+# Unit tests for risk_manager.ExposureController (v4.1)
 # Run: python3 -m unittest src.test_risk_manager  (or pytest)
 # =============================================================================
 
@@ -95,7 +95,7 @@ class TestTrailingStop(unittest.TestCase):
 
     def test_users_actual_loss_would_have_been_caught(self):
         """$260 peak -> $220 (-15.4%) should trigger heavy de-risking,
-        unlike the legacy (pre-v4.0) logic which required -22.5%."""
+        unlike the legacy (v3.x) logic which required -22.5%."""
         c = ExposureController(fast_config())
         c.update_portfolio_value(260.0)
         r = c.update_portfolio_value(220.0)

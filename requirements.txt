@@ -1,4 +1,4 @@
-# Skizoh Grid Bot v4.0 - Python Dependencies
+# Skizoh Grid Bot v4.1 - Python Dependencies
 # Optimized for Raspberry Pi / ARM64
 
 # Core trading library

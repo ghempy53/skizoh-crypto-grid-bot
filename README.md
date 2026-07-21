@@ -1,4 +1,4 @@
-# Skizoh Crypto Grid Trading Bot v4.0
+# Skizoh Crypto Grid Trading Bot v4.1
 
 A profit-optimized, Raspberry Pi-friendly cryptocurrency grid trading bot for Binance.US.
 
@@ -123,7 +123,7 @@ Replace the two placeholders with your Binance.US API credentials and save:
 }
 ```
 
-Leave everything else in the template at its defaults — v4.0's adaptive
+Leave everything else in the template at its defaults — v4.1's adaptive
 engine tunes the trading parameters live. The top-level keys you may want
 to review before going live: `symbol`, `use_bnb_for_fees`, `fee_rate`,
 `max_position_percent`, `default_scenario`.
@@ -253,12 +253,30 @@ chmod +x run_bot.sh monitor_bot.sh test_setup.sh
 
 ---
 
-## What's New in v4.0 — Down-Market Survival & Reliability
+## What's New in v4.1 — Cycle Economics & Live-Data Tuning
 
-v4.0 is the largest release to date, built from a real post-mortem: in a
+v4.1 is a data-driven tuning release: every change traces to a specific
+pattern observed in production logs and the trade ledger during the first
+weeks of live operation on the previous release.
+
+| Change | Observed problem | Fix |
+|--------|------------------|-----|
+| **Grid distance cap** (`max_grid_distance_percent`, default 4%) | Sells laddered up to +10% never filled within the stale window; they churned (cancel + re-place) every 30 min forever while locking ~half the ETH inventory | Levels beyond the cap aren't placed; the same capital concentrates into fewer, nearer, fillable orders. First capped ladder filled next day for the ledger's biggest wins |
+| **Reinvest/rebalancer conflict removed** | Legacy `reinvest_profits_to_eth` market-bought ETH blind to the exposure target; the rebalancer sold it back — a loop paying 2x taker + spread per round | Reinvestment is disabled whenever exposure management is active; the constant-mix rebalancer alone converts USDT profit into ETH |
+| **Batched order polling** | One `fetch_order` call per tracked order per cycle (~650 API calls/hour) | One `fetch_open_orders` call identifies still-open orders; only closed ones get individual fetches |
+| **Quiet-climb peak persistence** | The trailing-stop peak only persisted on de-risk/regime events; a crash during a calm climb restarted the stop from a lower anchor | Peak saves whenever it grows >=0.5% (throttled for SD wear); regression-tested |
+| **Rotating logs** (10MB x 3) | `grid_bot.log` grew unbounded for weeks, hit null-byte corruption from an ungraceful write, and made greps hang | `RotatingFileHandler` bounds size and retires corruption with old segments |
+| **Paused-cycle status line** | Multi-hour trend pauses logged only countdowns — no portfolio visibility | Each paused cycle logs value, price, exposure target, and peak |
+| **Regime hold 60 -> 240 min** (template default) | Ledger showed the 45%<->65% exposure target flapping every 1-2 days, trading ~$120 of stage-steps per flip on market indecision | 4-hour minimum hold damps target thrash; bear-entry confirmation counts are unaffected |
+
+---
+
+## Previous Release — Down-Market Survival & Reliability
+
+That release was the largest to date, built from a real post-mortem: in a
 sustained downtrend the old bot paused trading while fully invested (losses
 ran unmanaged), and an invalid API key later caused a silent two-month
-crash loop that the healthcheck never caught. v4.0 restructures both the
+crash loop that the healthcheck never caught. It restructured both the
 strategy and the reliability layer so neither failure is possible again.
 
 ### Regime-Aware Exposure Management (`src/risk_manager.py`)
@@ -440,20 +458,20 @@ skizoh-crypto-grid-bot/
 ├── docker-entrypoint.sh       # Container entry point
 ├── Makefile                   # Docker shortcut commands
 ├── requirements.txt           # Python dependencies
-├── daily_report.py            # Cron-driven daily phone report (v4.0, stdlib-only)
+├── daily_report.py            # Cron-driven daily phone report (v4.1, stdlib-only)
 ├── venv/                      # Virtual environment (created on first run)
 ├── src/
 │   ├── main.py                # Bot entry point + fault-classified startup retry
 │   ├── grid_bot.py            # Core trading engine + ProfitOptimizer
-│   ├── risk_manager.py        # Exposure controller: bear exit, trailing stop, rebalancing (v4.0)
-│   ├── notifier.py            # Push alerts: ntfy / webhook / Telegram (v4.0)
+│   ├── risk_manager.py        # Exposure controller: bear exit, trailing stop, rebalancing (v4.1)
+│   ├── notifier.py            # Push alerts: ntfy / webhook / Telegram (v4.1)
 │   ├── market_analysis.py     # Technical indicators + OHLCV caching
 │   ├── config_manager.py      # Scenario management & config loading
 │   ├── adaptive_config.py     # Adaptive config engine + regime detection
 │   ├── resilience.py          # Circuit breaker, flash crash, heartbeat
 │   ├── tax_summary.py         # Tax report generator (IRS Form 8949)
 │   ├── test_api.py            # API connection test
-│   ├── test_risk_manager.py   # Unit tests for the exposure controller (v4.0)
+│   ├── test_risk_manager.py   # Unit tests for the exposure controller (v4.1)
 │   └── priv/
 │       ├── config.json        # Your configuration (sensitive - never commit!)
 │       └── config.json.template
@@ -462,7 +480,7 @@ skizoh-crypto-grid-bot/
     ├── tax_transactions.csv   # Tax records
     ├── position_state.json    # Position tracking
     ├── position_state_archive.csv  # Historical positions
-    ├── risk_state.json        # Persisted peak value + exposure state (v4.0)
+    ├── risk_state.json        # Persisted peak value + exposure state (v4.1)
     ├── heartbeat.json         # Liveness + regime status for monitoring
     └── .alive                 # Healthcheck sentinel touched every cycle
 ```
@@ -510,12 +528,12 @@ skizoh-crypto-grid-bot/
 | `min_spacing_floor_percent` | Absolute min grid spacing (spread/slippage buffer) | 0.15 | 0.1–0.5 |
 | `fee_rate` | Legacy fallback if maker/taker not set | 0.001 | 0.0004–0.001 |
 | `use_bnb_for_fees` | Enable 25% BNB discount | false | true/false |
-| `enable_exposure_management` | Regime-aware exposure control (v4.0) | true | true/false |
+| `enable_exposure_management` | Regime-aware exposure control (v4.1) | true | true/false |
 | `risk_management` | Bear floor, trailing stop, rebalance settings | see template | — |
 | `alerts` | ntfy / webhook / Telegram push channels | disabled | — |
 | `max_position_percent` | Max portfolio in crypto (dynamically capped by exposure target) | 70 | 50–85 |
 | `max_single_order_percent` | Max single order size | 10 | 5–15 |
-| `enable_adaptive_config` | Enable continuous parameter blending (v4.0) | true | true/false |
+| `enable_adaptive_config` | Enable continuous parameter blending (v4.1) | true | true/false |
 | `enable_dynamic_scenarios` | Fallback discrete scenario switching | true | true/false |
 | `cycles_per_scenario_check` | Cycles between market regime evaluations | 5 | 3–10 |
 | `min_scenario_hold_minutes` | Minimum time before switching scenario | 45 | 30–90 |
@@ -524,7 +542,7 @@ skizoh-crypto-grid-bot/
 
 ---
 
-## Adaptive Configuration Engine (v4.0)
+## Adaptive Configuration Engine (v4.1)
 
 The adaptive config engine replaces hard scenario switches with smooth, continuous parameter blending based on real-time market regime detection.
 
@@ -568,7 +586,7 @@ The engine enforces hard bounds on all blended parameters:
 
 ---
 
-## 24/7 Resilience & Uptime (v4.0)
+## 24/7 Resilience & Uptime (v4.1)
 
 ### Circuit Breaker
 
@@ -641,12 +659,12 @@ At Binance.US 0% maker (grid limit orders are maker on both sides):
         = max(0%, 0.15%)
         = 0.15%           ← the floor covers spread + slippage
 
-With legacy 0.1% flat fees (pre-v4.0 assumption):
+With legacy 0.1% flat fees (v3.x-era assumption):
         = 2 × 0.001 × 100 × 1.8
         = 0.36%
 ```
 
-v4.0 verifies actual maker/taker rates at startup via `fetch_trading_fees`
+The bot verifies actual maker/taker rates at startup via `fetch_trading_fees`
 and adjusts automatically — the config values are just the fallback.
 
 ---
@@ -695,7 +713,7 @@ Based on: RSI extremes, Bollinger Band position, ADX trend strength.
 - **Max 10% per single order** (configurable via `max_single_order_percent`)
 - Automatic reduction when exposure exceeds limits
 
-### Exposure Controller (v4.0 — primary defense)
+### Exposure Controller (primary defense)
 Runs every cycle, *before* the trend filter, and unifies three mechanisms
 into a single target ETH exposure (see `src/risk_manager.py`):
 
@@ -718,7 +736,7 @@ a final backstop and triggers a full emergency exit.
 - Calculates ADX every cycle
 - **Pauses grid trading for 30 minutes** when ADX > 40
 - Logs warnings when ADX > 25
-- v4.0: pausing no longer freezes risk management — the exposure controller
+- Pausing no longer freezes risk management — the exposure controller
   keeps de-risking while the grid is paused
 
 ### Position Archival (Memory Safety)
@@ -787,7 +805,7 @@ The tool reads directly from `data/tax_transactions.csv` and `data/position_stat
 
 ## Monitoring
 
-### Push Alerts to Your Phone (v4.0)
+### Push Alerts to Your Phone (v4.1)
 
 Set a unique topic in `config.json` and subscribe to it in the
 [ntfy](https://ntfy.sh) mobile app — no account or API key needed:
@@ -801,7 +819,7 @@ regime confirmations, de-risk stages, rebalances, stops, and crashes.
 Webhook and Telegram channels are also supported (see the template).
 Treat the topic name like a password.
 
-### Daily Report (v4.0)
+### Daily Report (v4.1)
 
 `daily_report.py` sends a daily phone summary — portfolio value, exposure
 vs. target, P&L, drawdown from peak, today's trades — and warns loudly if
@@ -959,7 +977,7 @@ The exchange API returned repeated errors. The circuit breaker is protecting the
 **`-2015 Invalid API-key, IP, or permissions`** — the key was deleted,
 lost permissions, or (most common on home ISPs) your public IP rotated
 away from the key's IP whitelist. Rotate the key at Binance.US → API
-Management (Read + Spot Trading only, never withdrawals). v4.0 no longer
+Management (Read + Spot Trading only, never withdrawals). The bot no longer
 crash-loops on this: it alerts your phone and re-checks every 15 minutes,
 resuming automatically once the key works. The container will show
 `unhealthy` while trading is down — that's the healthcheck doing its job.
@@ -1179,4 +1197,4 @@ This software is for educational purposes. Cryptocurrency trading involves signi
 
 ---
 
-*Skizoh Crypto Grid Trading Bot v4.0 — Profit-Optimized Smart Adaptive Trading*
+*Skizoh Crypto Grid Trading Bot v4.1 — Profit-Optimized Smart Adaptive Trading*

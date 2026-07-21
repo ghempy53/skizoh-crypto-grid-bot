@@ -1,12 +1,12 @@
 # =============================================================================
-# Skizoh Grid Bot v4.0 - Makefile
+# Skizoh Grid Bot v4.1 - Makefile
 # =============================================================================
 
 .PHONY: help build run stop restart logs shell test clean realclean status
 
 help:
 	@echo ""
-	@echo "Skizoh Grid Bot v4.0 Commands"
+	@echo "Skizoh Grid Bot v4.1 Commands"
 	@echo "=============================="
 	@echo ""
 	@echo "  make build     Build Docker image"
@@ -23,7 +23,7 @@ help:
 build:
 	@echo "Building Docker image..."
 	DOCKER_BUILDKIT=1 docker compose build
-	@docker images skizoh-grid-bot:4.0 --format "Image size: {{.Size}}"
+	@docker images skizoh-grid-bot:4.1 --format "Image size: {{.Size}}"
 
 run:
 	@echo "Starting Grid Bot..."
@@ -65,7 +65,7 @@ realclean:
 	-docker rm skizoh-gridbot 2>/dev/null
 	@echo ""
 	@echo "Removing images..."
-	-docker rmi skizoh-grid-bot:4.0 2>/dev/null
+	-docker rmi skizoh-grid-bot:4.1 2>/dev/null
 	-docker rmi skizoh-grid-bot:latest 2>/dev/null
 	-docker rmi $$(docker images -q skizoh-grid-bot) 2>/dev/null
 	@echo ""
