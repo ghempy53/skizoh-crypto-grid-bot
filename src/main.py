@@ -52,14 +52,21 @@ from grid_bot import SmartGridTradingBot
 from config_manager import ConfigManager
 import notifier
 
-# Configure logging
+# Configure logging (v4.1: size-capped rotation)
+# The unbounded FileHandler grew for weeks on the Pi's SD card until greps
+# hung and an ungraceful write left null bytes mid-file. 10MB x 3 backups
+# keeps ~1 month of history, bounds SD wear, and retires corruption with
+# old segments instead of accumulating it forever.
+from logging.handlers import RotatingFileHandler
+
 LOG_FILE = DATA_DIR / 'grid_bot.log'
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(str(LOG_FILE)),
+        RotatingFileHandler(str(LOG_FILE), maxBytes=10 * 1024 * 1024,
+                            backupCount=3),
         logging.StreamHandler()
     ]
 )

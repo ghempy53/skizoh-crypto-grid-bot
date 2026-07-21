@@ -2510,6 +2510,21 @@ class SmartGridTradingBot:
                 # PHASE 3: Trend filter
                 # ============================================================
                 if not self.check_trend_filter():
+                    # v4.1: Keep portfolio state visible during long pauses.
+                    # Risk management (manage_exposure above) is still live;
+                    # this line just proves it in the logs.
+                    try:
+                        paused_pf = self.calculate_current_value(current_price)
+                        if paused_pf:
+                            risk = self.exposure_controller.get_status()
+                            logger.info(
+                                f"⏸️ [Paused] Value: ${paused_pf['total_value']:.2f} | "
+                                f"Price: ${current_price:.2f} | "
+                                f"Target: {risk['effective_target']:.0f}% | "
+                                f"Peak: ${risk['peak_value']:.2f}"
+                            )
+                    except Exception:
+                        pass
                     self.session_health.update(
                         self.connection_monitor.get_health_score(), True
                     )
