@@ -1659,6 +1659,37 @@ class SmartGridTradingBot:
                 logger.info(f"Opposite {side} skipped: notional ${quantity * new_price:.2f} below min ${min_cost:.2f}")
                 return
 
+            # v4.1: Free-balance guard. During bear staging the exposure
+            # rebalancer can sweep ETH to the floor in the same cycle a grid
+            # buy fills — the opposite SELL then has no ETH to sell and the
+            # exchange rejects it ("insufficient balance"). Cap the opposite
+            # order to what's actually free, and skip cleanly if the
+            # rebalancer already claimed it. Observed 4x during TRENDING_DOWN.
+            try:
+                bal = self.get_balances()
+                if bal:
+                    if side == 'sell':
+                        free = bal['base']
+                        if free < min_amount:
+                            logger.info(f"Opposite sell skipped: rebalancer holds ETH "
+                                        f"(free {free:.6f} < {min_amount})")
+                            return
+                        quantity = min(quantity, float(
+                            self.exchange.amount_to_precision(self.symbol, free)))
+                    else:  # buy needs quote
+                        need = quantity * new_price
+                        if bal['quote'] < need:
+                            if bal['quote'] < min_cost or bal['quote'] < min_amount * new_price:
+                                logger.info(f"Opposite buy skipped: insufficient USDT "
+                                            f"(free ${bal['quote']:.2f})")
+                                return
+                            quantity = float(self.exchange.amount_to_precision(
+                                self.symbol, bal['quote'] / new_price * 0.999))
+                    if quantity < min_amount:
+                        return
+            except Exception:
+                pass  # guard is best-effort; original try/except still catches a reject
+
             order = self.exchange.create_order(
                 symbol=self.symbol, type='limit', side=side,
                 amount=quantity, price=new_price

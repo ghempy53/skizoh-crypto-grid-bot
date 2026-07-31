@@ -35,7 +35,16 @@ class Notifier:
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         config = config or {}
-        self.ntfy_topic = (config.get('ntfy_topic') or '').strip()
+        # Accept a bare topic ("my-topic") or a pasted URL
+        # ("ntfy.sh/my-topic", "https://ntfy.sh/my-topic") — the send path
+        # builds https://ntfy.sh/<topic>, so a URL-shaped value would
+        # otherwise produce a broken double-host URL that fails silently.
+        topic = (config.get('ntfy_topic') or '').strip()
+        for prefix in ('https://ntfy.sh/', 'http://ntfy.sh/', 'ntfy.sh/'):
+            if topic.startswith(prefix):
+                topic = topic[len(prefix):]
+                break
+        self.ntfy_topic = topic.strip('/')
         self.webhook_url = (config.get('webhook_url') or '').strip()
         self.telegram_token = (config.get('telegram_bot_token') or '').strip()
         self.telegram_chat_id = str(config.get('telegram_chat_id') or '').strip()
