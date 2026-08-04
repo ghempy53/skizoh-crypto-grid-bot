@@ -2,6 +2,22 @@
 
 [← Back to README](../README.md)
 
+## What's New in v4.2 — Let the Grid Fill, Stop the Whipsaw
+
+Post-mortem of 14 days live (Jul 20–Aug 3, ETH ranging $1,830–$2,000):
+account -3.0%. The grid completed **4 cycles (+$1.66)** out of 2,002 orders
+placed (~1,760 canceled as "stale"), while the regime rebalancer executed
+61 taker trades that net-sold @ avg $1,887 and re-bought @ avg $1,904
+(**-$7.3 realized**). The adaptive stack was destroying the grid's edge.
+
+| Change | Observed problem | Fix |
+|--------|------------------|-----|
+| **Distance-aware stale cancels** (was: 30-min age cutoff) | 88% of orders canceled before they could fill — ~1% fill rate. A resting maker order costs 0% | Cancel only orders outside the `max_grid_distance` band; 8h age hard cap as safety |
+| **Adaptive spacing cap** (`max_spacing_cap_percent`, default 1.25%) | Regime blend pushed spacing to 1.5–2.3% (Swing 2.7% weight) in a 1–2% daily range — orders sat unfillable | Spacing clamped; with 0% maker fees, tight grids cycle nearly free |
+| **Reposition threshold 1.5x → 3x spacing; grid rebuild interval 4 → 30 min** | Grid re-centered on every ~1.1% move, chasing price instead of letting it cross static levels | Grid stays put; price oscillation completes cycles |
+| **Flattened regime targets** (15–65% → 30–60%; band 7% → 12%; stage 15pt/20min → 10pt/60min; confidence 0.55 → 0.65; confirms 3/4 → 6/8; hold 6h) | Target swings trend-followed noisy regime flips with taker market orders — systematic sell-low/buy-high | Exposure held near-constant (constant-mix harvests ranges positively); big de-risking left to the drawdown trailing stop |
+| **Trailing-stop cap decoupled from bear floor** (`trailing_stop_cap_percent`: 15) | Raising the regime floor to 25% would have weakened real-drawdown protection | Regime noise floors at 25%; a -10% drawdown still caps at 15% |
+
 ## What's New in v4.1 — Cycle Economics & Live-Data Tuning
 
 v4.1 is a data-driven tuning release: every change traces to a specific

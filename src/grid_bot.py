@@ -503,10 +503,19 @@ class SmartGridTradingBot:
 
     DEFAULT_FEE_RATE = 0.001  # 0.1%
     TREND_PAUSE_SECONDS = 1800  # 30 minutes
-    REPOSITION_THRESHOLD_MULTIPLIER = 1.5  # More responsive repositioning keeps grid centered on price
-    MIN_GRID_UPDATE_INTERVAL = 240  # 4 minutes - faster grid adaptation to price moves
+    # v4.2: Reposition rarely. Grid profit comes from price oscillating
+    # across STATIC levels; the old 1.5x multiplier re-centered the grid on
+    # every ~1.1% move, which chased price instead of letting it cross the
+    # grid. Observed live (Jul 20-Aug 3): 2002 orders placed, ~1760
+    # canceled, only 4 completed cycles in 14 days.
+    REPOSITION_THRESHOLD_MULTIPLIER = 3.0
+    MIN_GRID_UPDATE_INTERVAL = 1800  # 30 min between grid rebuilds
     FEE_SAFETY_FACTOR = 1.8  # Tighter margin above fees = more cycles complete profitably
-    STALE_ORDER_SECONDS = 1800  # 30 min - free capital faster for redeployment at current prices
+    # v4.2: Age alone no longer cancels an order that is still within the
+    # fillable band (see cancel_stale_orders). This is only the hard cap.
+    # A resting limit order costs nothing (0% maker); canceling it 30 min
+    # in guaranteed it never filled — that was the churn engine.
+    STALE_ORDER_SECONDS = 28800  # 8h hard cap
 
     # Pi-specific settings
     MEMORY_CHECK_INTERVAL = 50  # Check memory every N cycles
@@ -558,6 +567,10 @@ class SmartGridTradingBot:
         # (cancel + re-place) forever while locking capital. Observed live:
         # sells laddered to +10% recycling every 30 min without a single fill.
         self.max_grid_distance_percent = config.get('max_grid_distance_percent', 4.0)
+        # v4.2: Hard ceiling on adaptive grid spacing. The regime blend can
+        # request Swing-Trading-like spacing (2.7%) that exceeds the typical
+        # daily range and never fills; profit = fills, so cap it.
+        self.max_spacing_cap_percent = config.get('max_spacing_cap_percent', 1.25)
         logger.info(
             f"Fees: maker {self.maker_fee_rate*100:.3f}% / "
             f"taker {self.taker_fee_rate*100:.3f}% | "
@@ -1115,6 +1128,13 @@ class SmartGridTradingBot:
                 market['adx'],
                 market['rsi']
             )
+
+            # v4.2: Cap spacing. With 0% maker fees a tight grid is nearly
+            # free; the real cost is spacing wider than the daily range,
+            # which never fills. Observed live: adaptive blend pushed
+            # spacing to 1.5-2.3% while ETH ranged $1830-2000 with ~1-2%
+            # daily moves — orders sat unfillable, then got recycled.
+            optimal_spacing = min(optimal_spacing, self.max_spacing_cap_percent)
 
             if abs(optimal_spacing - self.grid_spacing_percent) > 0.1:
                 logger.info(f"[Grid] Spacing adjusted: {self.grid_spacing_percent:.2f}% -> {optimal_spacing:.2f}%")
@@ -2210,16 +2230,30 @@ class SmartGridTradingBot:
         except Exception as e:
             logger.warning(f"[Reconcile] Startup reconciliation failed (continuing): {e}")
 
-    def cancel_stale_orders(self):
-        """Cancel orders that have been open too long without filling.
+    def cancel_stale_orders(self, current_price: float = 0.0):
+        """Cancel orders that can no longer fill, not merely old ones.
 
-        Stale orders tie up capital that could be redeployed at current prices.
+        v4.2: An order within max_grid_distance of the current price is a
+        live, zero-cost (0% maker) bet that price crosses its level — age is
+        irrelevant. Cancel only when price has drifted so far that the level
+        is outside the fillable band, or past an 8h hard cap as a safety net.
+        The old 30-min age-only rule canceled ~1760 of 2002 orders live and
+        allowed just 4 completed grid cycles in 14 days.
         """
         now = time.time()
         stale_ids = []
         for order_id, info in self.active_orders.items():
             placed_at = info.get('placed_at', now)
-            if now - placed_at > self.STALE_ORDER_SECONDS:
+            age = now - placed_at
+
+            out_of_band = False
+            if current_price > 0:
+                level_price = info.get('level', {}).get('price', 0)
+                if level_price > 0:
+                    dist_pct = abs(level_price - current_price) / current_price * 100
+                    out_of_band = dist_pct > self.max_grid_distance_percent
+
+            if out_of_band or age > self.STALE_ORDER_SECONDS:
                 stale_ids.append(order_id)
 
         for order_id in stale_ids:
@@ -2592,7 +2626,7 @@ class SmartGridTradingBot:
                     self.calculate_grid_levels(reposition=True)
 
                 # Execute trading
-                self.cancel_stale_orders()
+                self.cancel_stale_orders(current_price)
                 self.place_grid_orders()
                 self.check_orders()
 

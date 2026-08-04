@@ -35,33 +35,44 @@ class ExposureController:
     All percentages are 0-100.
     """
 
+    # v4.2: Flattened targets + heavy damping. Live data (Jul 20-Aug 3,
+    # ranging market): the 15<->65 target swings produced 61 taker
+    # rebalances that net-sold 0.5385 ETH @ avg $1887 and net-bought
+    # 0.4431 ETH @ avg $1904 — a systematic sell-low/buy-high loop that
+    # cost ~$7.3 realized while the grid earned $1.66. Regime detection on
+    # this timeframe is too noisy to trend-follow with market orders; keep
+    # exposure near-constant (constant-mix harvests ranges *positively*)
+    # and reserve big de-risking for the drawdown-based trailing stop.
     DEFAULTS = {
         # Regime targets: % of portfolio to hold as ETH per regime
         'regime_targets': {
-            'TRENDING_UP': 65,
-            'BREAKOUT': 65,
-            'RANGING': 45,
-            'MEAN_REVERTING': 45,
-            'LOW_VOLATILITY': 45,
-            'HIGH_VOLATILITY': 30,
-            'TRENDING_DOWN': 15,
-            'CRASH': 15,
+            'TRENDING_UP': 60,
+            'BREAKOUT': 60,
+            'RANGING': 50,
+            'MEAN_REVERTING': 50,
+            'LOW_VOLATILITY': 50,
+            'HIGH_VOLATILITY': 40,
+            'TRENDING_DOWN': 30,
+            'CRASH': 20,
         },
-        'bear_exposure_floor_percent': 15,   # never sell below this in bear regime
-        'bear_confirm_checks': 3,            # consecutive bearish detections to confirm
-        'bull_reentry_confirm_checks': 4,    # consecutive non-bearish detections to re-enter
-        'min_regime_hold_minutes': 60,       # min time between regime-driven target changes
-        'regime_confidence_threshold': 0.55, # ignore low-confidence regime flips
-        'stage_step_percent': 15,            # max exposure change per stage (percentage points)
-        'stage_interval_minutes': 20,        # min time between stages
+        'bear_exposure_floor_percent': 25,   # never sell below this in bear regime
+        'bear_confirm_checks': 6,            # consecutive bearish detections to confirm
+        'bull_reentry_confirm_checks': 8,    # consecutive non-bearish detections to re-enter
+        'min_regime_hold_minutes': 360,      # min time between regime-driven target changes
+        'regime_confidence_threshold': 0.65, # ignore low-confidence regime flips
+        'stage_step_percent': 10,            # max exposure change per stage (percentage points)
+        'stage_interval_minutes': 60,        # min time between stages
         # Trailing stop: drawdown-from-peak => exposure cap (% points)
-        'trailing_stop_percent': 10,         # at this drawdown, cap at floor
+        'trailing_stop_percent': 10,         # at this drawdown, cap hard
+        # v4.2: decoupled from bear_exposure_floor_percent — regime noise
+        # deserves a gentle floor (25), a real -10% drawdown does not (15)
+        'trailing_stop_cap_percent': 15,
         'derisk_stages': [[5, 50], [8, 25]], # [drawdown %, exposure cap %]
         'catastrophic_stop_percent': 20,     # emergency: halt + full exit
         'peak_reset_profit_percent': 3,      # new peak > old*(1+x%) resets stages
-        # Rebalancing
-        'rebalance_band_percent': 7,         # act only when drift exceeds this
-        'min_rebalance_notional_usdt': 10,
+        # Rebalancing (wide band + high minimum = few, meaningful trades)
+        'rebalance_band_percent': 12,        # act only when drift exceeds this
+        'min_rebalance_notional_usdt': 20,
     }
 
     def __init__(self, config: Optional[Dict[str, Any]] = None,
@@ -257,13 +268,14 @@ class ExposureController:
                     'drawdown': drawdown, 'halt': True}
 
         # Staged de-risk caps (config: [[drawdown %, cap %], ...])
-        floor = float(self.cfg['bear_exposure_floor_percent'])
+        hard_cap = float(self.cfg.get('trailing_stop_cap_percent',
+                                      self.cfg['bear_exposure_floor_percent']))
         new_cap = 100.0
         for dd_threshold, cap in sorted(self.cfg['derisk_stages']):
             if drawdown >= dd_threshold:
                 new_cap = float(cap)
         if drawdown >= self.cfg['trailing_stop_percent']:
-            new_cap = min(new_cap, floor)
+            new_cap = min(new_cap, hard_cap)
 
         # Caps only tighten; they relax via DERISK_RESET on new highs
         if new_cap < self._derisk_cap:
