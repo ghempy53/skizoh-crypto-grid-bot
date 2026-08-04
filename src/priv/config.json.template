@@ -20,7 +20,7 @@
     "_comment_maxdist": "Max % distance from price for grid levels (deeper levels churn without filling)",
     "max_grid_distance_percent": 4.0,
 
-    "_comment_spacing_cap": "v4.2: Hard ceiling on adaptive spacing. Spacing wider than the daily range never fills; with 0% maker fees tight grids are nearly free. Observed: blend pushed spacing to 1.5-2.3% in a 1-2% daily range = ~zero fills.",
+    "_comment_spacing_cap": "v4.2: Ceiling on adaptive spacing in CALM markets. Effective cap = max(this, 0.3 * 24h range %), so real volatility spikes still widen the grid (vol 8% -> cap 2.4%). Observed: blend pushed spacing to 1.5-2.3% while true daily ranges were 1-3.7% = ~zero fills.",
     "max_spacing_cap_percent": 1.25,
 
     "_comment_bnb": "Enable BNB for 25% fee discount (requires BNB balance)",

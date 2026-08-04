@@ -1132,9 +1132,21 @@ class SmartGridTradingBot:
             # v4.2: Cap spacing. With 0% maker fees a tight grid is nearly
             # free; the real cost is spacing wider than the daily range,
             # which never fills. Observed live: adaptive blend pushed
-            # spacing to 1.5-2.3% while ETH ranged $1830-2000 with ~1-2%
-            # daily moves — orders sat unfillable, then got recycled.
-            optimal_spacing = min(optimal_spacing, self.max_spacing_cap_percent)
+            # spacing to 1.5-2.3% while true daily ranges were 1-3.7% —
+            # orders sat unfillable, then got recycled.
+            #
+            # The cap scales with measured volatility (24h range %) so a
+            # genuine vol spike still widens the grid: spacing ~30% of the
+            # daily range fills several times per day, while the configured
+            # cap acts as the floor of the cap in calm markets.
+            #   vol 3% -> cap 1.25% | vol 6% -> 1.8% | vol 10% -> 3.0%
+            effective_cap = max(self.max_spacing_cap_percent,
+                                0.3 * market['volatility'])
+            if optimal_spacing > effective_cap:
+                logger.info(f"[Grid] Spacing capped: {optimal_spacing:.2f}% -> "
+                            f"{effective_cap:.2f}% (24h range "
+                            f"{market['volatility']:.1f}%)")
+            optimal_spacing = min(optimal_spacing, effective_cap)
 
             if abs(optimal_spacing - self.grid_spacing_percent) > 0.1:
                 logger.info(f"[Grid] Spacing adjusted: {self.grid_spacing_percent:.2f}% -> {optimal_spacing:.2f}%")
