@@ -799,6 +799,15 @@ class SmartGridTradingBot:
         logger.warning("Attempting exchange reconnection...")
         self.connection_monitor.record_reconnect()
 
+        # v4.1: Preserve the market catalog across reconnects. A fresh ccxt
+        # client has empty .markets, which forced load_markets() — the
+        # multi-MB /api/v3/exchangeInfo call (weight 20). Observed live
+        # (Aug 15-23): that one endpoint failed on every reconnect attempt
+        # (976 failures) while all lightweight endpoints kept working,
+        # locking the bot in a reconnect storm. Market metadata (precision,
+        # min notional) changes rarely; reusing the startup catalog is safe.
+        saved_markets = getattr(self.exchange, 'markets', None)
+
         def _try_connect():
             self.exchange = ccxt.binanceus({
                 'apiKey': self.api_key,
@@ -815,19 +824,26 @@ class SmartGridTradingBot:
                     'fetchCurrencies': False,
                 }
             })
-            # Markets were already loaded at startup; only reload if the
-            # symbol is missing on this fresh client. Avoids re-pulling
-            # the full market list on every reconnect.
-            if self.symbol not in (self.exchange.markets or {}):
+            # Reuse the startup market catalog instead of re-pulling
+            # exchangeInfo; only fall back to load_markets if we have
+            # nothing cached (e.g. reconnect before first successful boot).
+            if saved_markets and self.symbol in saved_markets:
+                self.exchange.set_markets(saved_markets)
+            elif self.symbol not in (self.exchange.markets or {}):
                 self.exchange.load_markets()
             # Lightweight public liveness probe — no signature, no sapi.
             self.exchange.fetch_ticker(self.symbol)
             return True
 
+        # v4.1: No shared circuit breaker here. Reconnect retries were
+        # feeding failures into _cb_market_data, opening it, which then
+        # blocked the wrapped market-data calls whose successes are the
+        # only thing that can mark the connection healthy again — a
+        # self-locking loop. Reconnection manages its own backoff.
         result = retry_with_backoff(
             _try_connect, max_retries=4,
             base_delay=self.RECONNECT_DELAY_BASE,
-            circuit_breaker=self._cb_market_data,
+            circuit_breaker=None,
             fallback=False
         )
 
@@ -907,10 +923,18 @@ class SmartGridTradingBot:
     def get_balances(self) -> Optional[Dict[str, Any]]:
         """Get current balances."""
         try:
+            _t0 = time.time()
             balance = self.exchange.fetch_balance()
+            # v4.1: Record success from this always-running path. Previously
+            # only _resilient_api_call-wrapped calls recorded successes, so
+            # when the market-data breaker opened, no successes were ever
+            # recorded and is_connected() stayed false even while trading
+            # calls (like this one) succeeded every cycle — sustaining a
+            # false "connection lost" reconnect storm.
+            self.connection_monitor.record_api_call(time.time() - _t0, success=True)
             base_currency = self.symbol.split('/')[0]
             quote_currency = self.symbol.split('/')[1]
-            
+
             return {
                 'base': float(balance[base_currency]['free'] or 0),
                 'base_total': float(balance[base_currency]['total'] or 0),
